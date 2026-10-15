@@ -6,9 +6,72 @@ configuration out of first connection. No new capabilities or permissions.
 Local Node22.23.3: 17 tests passed, one older-runtime-only check skipped; real
 STDIO/WebSocket boundaries with simulated device and clean production-package
 installation passed. An invalid wait value is rejected even when events are
-queued; those events remain available to the next valid call. Public CI and
-actual Opus/110 retest are recorded separately after delivery; the historical
-0.1.0 evidence below is not a 0.1.1 device acceptance claim.
+queued; those events remain available to the next valid call. [All six Linux/macOS CI jobs passed](https://github.com/VrchStudio/vrch-mcp/actions/runs/38789448957).
+[Fixed Release0.1.1](https://github.com/VrchStudio/vrch-mcp/releases/tag/v0.1.1)
+source is825986318b381eb1a28a03adbb4d9d6d21d7964f. Anonymous tarball SHA-256
+`2ae4ac64cd33f775400fa5c53e8cbaeaaa8410a0819ed0dc505c4a9e190e7a57`
+matched. Viewer Pages dev792e9293 was installed through normal Components on110;
+five actual served resources matched. Existing969App files/access digests were
+unchanged across that update. No Runtime action, session replacement or remote
+MCP deployment was performed. Historical0.1.0 evidence below remains distinct.
+
+### Second invitation-only Opus test, 0.1.1
+
+Exact `anthropic/claude-opus-5-5` / `high`, same Codex CLI0.162.1 and
+Node22.23.3/Linux, new isolated empty HOME/workspace, no MCP installation/config,
+credentials, old conversation or private repository visible. Only the actual
+new copied invitation was supplied. The model fetched public0.1.1 itself,
+verified the Release tarball against SHA256SUMS, installed with no install
+scripts and registered MCP through normal host approvals. A new conversation
+loaded those tools and received only the same original invitation, no coaching.
+The second conversation is not itself an uninstalled cold environment.
+
+| Cumulative seconds / boundary | First0.1.0 trial | Second0.1.1 trial |
+| --- | ---: | ---: |
+| Package installed | 30.0 | 60.6 |
+| MCP registered | 38.5 | 66.3 |
+| First conversation finished | 57.6 | 72.8 |
+| New conversation started | 106.8 | 73.1 |
+| Actual ai_pending event | 122.2 | 88.0 |
+| Actual human ai_approved | 140.5 | 125.9 |
+| Capabilities returned | 143.6 | 129.3 |
+| Apps list/state read | Not called | Both before129.4 |
+| ai_report delivered | 147.8 | 133.9 |
+| Ready and process completion | 153.9 | 139.1 |
+| Host reopening/dispatch gap | 49.2 | 0.3 |
+| Pending-to-approved window | 18.4 | 37.9 |
+| Approximate execution excluding those windows | 86.4 | 100.8 |
+
+The total valid run shortened14.9s, but installation was30.6s slower. The model
+spent25.7s on a web search that did not find the public README before fetching it
+directly, and chose checksum verification. Most total-time improvement came from
+immediate host reopening; human approval timing varied. This single observation
+does not establish faster execution, an onboarding SLA or any other host's support.
+
+No unsupported re-invitation request or invalid wait argument occurred. All three
+terminal_events calls used `{}`; zero MCP tool errors. After real human Allow,
+capabilities/list/state supported the delivered report: five saved Apps, Metronome
+selected, no running preview/device instance. This test made no App/file/input or
+Launch/Exit mutations. English was explicitly acceptable. Host restart was still
+required in this noninteractive host; the model's suggestion that `/mcp` could
+reload has not been established for this CLI. It also spoke too confidently that
+the invitation was still valid; successful reuse, not that assertion, is evidence.
+
+Test preparation was separately faulty: copying Node without preserving symlinks
+broke npm; two invalid host attempts were stopped before any device connection.
+A genuinely NEW environment was then rebuilt and node/npm/npx/Codex/noMCP checked
+before the valid trial. Conversation UTC first attempted start through final
+ready was286.9s (about4m47), with148.3s before the valid conversation; the table's
+139.1s is the valid trial, not a hidden all-attempt total. Earlier implementation
+and environment preparation are not timed as onboarding. Raw logs/invitations
+are not published.
+
+An existing MCP Acceptance App was deleted through normal Apps at18:59:53 UTC,
+before the first test model started at19:00:23; it was not restored. Remaining
+original App files kept identical hashes. The human's Remove/reinvite/Allow
+changed the Apps authorization as expected. Host exit disconnected the test
+client without revoking that new grant; its independent resume credential is
+retained privately. No other device or shared server was changed.
 
 # Verification status
 

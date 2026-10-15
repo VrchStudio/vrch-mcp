@@ -2,6 +2,8 @@
 
 ## 0.1.1
 
+- Record the second invitation-only Opus test and its measured timing limits.
+
 - Clarify first connection, approval waiting and invitation reuse after setup.
 - Make event waiting and queued approval handling explicit; keep long-operation tuning optional.
 
