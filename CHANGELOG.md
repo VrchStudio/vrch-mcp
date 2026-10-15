@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Fetch short first-connection instructions directly and resume the existing Codex conversation after setup.
+
 ## 0.1.1
 
 - Record the second invitation-only Opus test and its measured timing limits.

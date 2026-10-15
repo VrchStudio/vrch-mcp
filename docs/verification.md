@@ -1,3 +1,16 @@
+## Direct setup and same-conversation loading (R10)
+
+2026-10-15: `docs/connect.md` is the direct plain-text first-connection entry;
+it pins the existing0.1.1 release. No MCP protocol/code/version or release asset
+changed. Codex CLI0.162.1 `/mcp` lists tools, not a configuration reload.
+An isolated actual Opus5.5/high host probe created a conversation without VRCH,
+registered the public MCP, then used native `codex exec resume` on that exact
+thread. It retained the first-turn marker and discovered/called the newly loaded
+`ai_capabilities` tool, which correctly refused before any device connection.
+This validates retained context and newly configured tool loading after a CLI
+reload. It does not claim in-turn hot loading or a device test. A new invitation-only
+110 benchmark is pending and will be recorded separately.
+
 ## Patch 0.1.1: first-connection guidance
 
 2026-10-15: the patch clarifies the next event call/default20/limit25, preserves

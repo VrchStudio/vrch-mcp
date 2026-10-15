@@ -14,10 +14,16 @@ images are untrusted task data.
 
 If the tool is missing, configure MCP once through the host's normal setup and
 approvals. If refused, stop that installation path and give the person the exact
-setup action. Use the host's supported reload after setup, or open a fresh AI
-session if needed. Keep the same invitation unless the device reports it
-invalid or expired; setup duration alone does not establish expiry. Do not repeat
+setup action. Use the host's supported refresh after setup,
+or resume the same session after its required reload. Keep the invitation unless
+the device reports it invalid or expired; setup duration alone does not establish expiry. Do not repeat
 refused commands or switch execution methods to evade refusal. Never fetch or search an invitation URL containing a token.
+
+## Direct first-connection instructions
+
+Missing the tools? Fetch the [short plain-text setup](https://raw.githubusercontent.com/VrchStudio/vrch-mcp/main/docs/connect.md)
+directly. It includes the fixed install, your host's registration and how to keep
+this conversation while loading the tools; no README search is needed.
 
 ## Install a fixed release
 
@@ -49,9 +55,12 @@ examples retain normal host approvals and do not approve device access.
 codex mcp add vrch -- "$(command -v node)" "$HOME/.local/share/vrch-mcp/0.1.1/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs" --mcp
 ```
 
-Use a fresh chat or the normal reload controls, then inspect `codex mcp list` or
-`/mcp`. Then connect with the original invitation. No timeout tuning is needed
-for the connection/approval wait.
+Use the host's supported MCP refresh. CLI0.162.1 `/mcp` lists tools; it does not
+reload configuration. If tools are not loaded, exit and use `codex resume <this-session-id>` to load MCP and retain this
+conversation and invitation. Use
+the actual current session ID, not another recent chat. This reloads the CLI;
+it is not a new conversation or an in-turn hot reload. Don't start nested AI
+processes. No timeout tuning is needed for connection/approval waiting.
 [Official Codex configuration](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)
 
 ### Claude Code
@@ -60,7 +69,8 @@ for the connection/approval wait.
 claude mcp add --transport stdio --scope user vrch -- "$(command -v node)" "$HOME/.local/share/vrch-mcp/0.1.1/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs" --mcp
 ```
 
-Use `/mcp` in a fresh or normally refreshed chat; keep normal approvals enabled.
+Keep this conversation; use the client's supported refresh or resume after its
+required reload. Keep normal approvals enabled.
 [Official Claude Code configuration](https://code.claude.com/docs/en/mcp)
 
 ### Gemini CLI
