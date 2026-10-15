@@ -22,11 +22,13 @@ for (const entry of ['bin/vrch-mcp.mjs','dist/vrch-mcp.mjs']) test(`official MCP
       assert.equal(typeof tool.annotations.readOnlyHint, 'boolean');
       assert.equal(tool.inputSchema.additionalProperties, false);
     }
+    assert.equal(initial.tools.find(tool=>tool.name==='terminal_events').inputSchema.properties.waitSeconds.default,20);
     assert.equal(initial.tools.find(tool=>tool.name==='apps_control').annotations.readOnlyHint,false);
     assert.equal(initial.tools.find(tool=>tool.name==='file_download').annotations.readOnlyHint,false);
     const call = (name, args = {}) => client.callTool({name,arguments:args});
     const joinResult = await call('terminal_connect',{url:device.url});
     assert.equal(joinResult.isError,undefined);
+    assert.match(joinResult.content[0].text,/terminal_events\(\{\}\)/);
     await until(()=>device.frames.some(frame=>frame.type==='ai_join'));
     assert.equal(device.frames[0].path, '/vrch-ws/apps-terminal-assist');
     const blocked = await call('apps_list');
@@ -34,8 +36,13 @@ for (const entry of ['bin/vrch-mcp.mjs','dist/vrch-mcp.mjs']) test(`official MCP
     assert(!device.frames.some(frame=>frame.type==='apps_request'));
     await call('ai_report',{message:'正在等待你在 My Apps 中批准。'});
     assert.equal(device.reports.length,1);
+    const invalidWait = await call('terminal_events',{waitSeconds:55});
+    assert.equal(invalidWait.isError,true);
+    assert.match(invalidWait.content[0].text,/terminal_events\(\{\}\)/);
     device.approve();
-    const events = await call('terminal_events',{waitSeconds:1});
+    const events = await call('terminal_events');
+    assert(events.content.some(item=>item.type==='text' && item.text.includes('ai_approved')));
+    assert(events.content.some(item=>item.type==='text' && item.text.includes('apps_guide')));
     assert(!JSON.stringify(events).includes('fixture-secret'));
     assert.deepEqual(await client.listTools(),initial);
     assert.equal(JSON.parse((await call('ai_capabilities')).content[0].text).apps,true);

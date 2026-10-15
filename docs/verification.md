@@ -1,3 +1,15 @@
+## Patch 0.1.1: first-connection guidance
+
+2026-10-15: the patch clarifies the next event call/default20/limit25, preserves
+invitation reuse through host setup/reload, and moves optional long-operation
+configuration out of first connection. No new capabilities or permissions.
+Local Node22.23.3: 17 tests passed, one older-runtime-only check skipped; real
+STDIO/WebSocket boundaries with simulated device and clean production-package
+installation passed. An invalid wait value is rejected even when events are
+queued; those events remain available to the next valid call. Public CI and
+actual Opus/110 retest are recorded separately after delivery; the historical
+0.1.0 evidence below is not a 0.1.1 device acceptance claim.
+
 # Verification status
 
 Initial release **0.1.0**. The unchanged collaboration implementation was accepted

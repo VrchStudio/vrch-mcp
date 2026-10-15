@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1
+
+- Clarify first connection, approval waiting and invitation reuse after setup.
+- Make the normal event wait explicit and keep long-operation tuning optional.
+
 ## 0.1.0
 
 - Record first-time Opus installation and the required host reload.
