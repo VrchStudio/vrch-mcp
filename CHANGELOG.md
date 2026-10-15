@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Record first-time Opus installation and the required host reload.
+
 - Clarify verified host support and public-package upgrade behavior.
 
 - Publish the first fixed local release with Linux/macOS CI and Codex-to-device acceptance.
