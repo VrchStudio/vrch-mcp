@@ -8,8 +8,73 @@ registered the public MCP, then used native `codex exec resume` on that exact
 thread. It retained the first-turn marker and discovered/called the newly loaded
 `ai_capabilities` tool, which correctly refused before any device connection.
 This validates retained context and newly configured tool loading after a CLI
-reload. It does not claim in-turn hot loading or a device test. A new invitation-only
-110 benchmark is pending and will be recorded separately.
+reload. It does not claim in-turn hot loading or a device test. The independent
+invitation-only 110 benchmark follows.
+
+
+### Third invitation-only test: direct guide and the same conversation
+
+Exact Opus 5.5/high, Codex CLI 0.162.1, Linux and Node 22.23.3 / npm 10.9.9.
+A newly isolated empty HOME/workspace had no MCP installation/configuration,
+credentials, old conversation, private repositories or visible harness. The model
+received only the actual copied invitation, fetched public `docs/connect.md`,
+installed fixed 0.1.1 itself with scripts disabled and registered it using normal
+approvals. The host then used native `codex exec resume` with the exact original
+thread ID and only a neutral "Continue." turn. The invitation and setup context
+carried over; no new chat, repasted invitation, parent setup commands, nested AI
+or standalone client. This reloads the CLI, not tools inside the original turn.
+
+| Cumulative seconds / boundary | Previous R9 | R10 valid test |
+| --- | ---: | ---: |
+| Public package installed | 60.6 | 32.4 |
+| MCP registered | 66.3 | 57.8 |
+| First turn completed | 72.8 | 67.9 |
+| Second host turn started | 73.1 (new context) | 68.2 (same conversation) |
+| terminal_connect returned | 87.9 | 87.7 |
+| Actual ai_pending | 88.0 | 87.8 |
+| Actual ai_approved | 125.9 | 105.6 |
+| Capabilities/list/state all read | 129.4 | 114.7 |
+| ai_report delivered | 133.9 | 126.2 |
+| Ready/process completion | 139.1 | 132.9 |
+| Reload/dispatch gap | 0.3 | 0.3 |
+| Pending-to-approved window | 37.9 | 17.9 |
+| Approximate execution excluding those windows | 100.8 | 114.8 |
+
+The short guide arrived at 17.2s and matched public source exactly; zero web
+searches, versus the previous failed 25.7s README search. Installation finished
+28.1s earlier but registration only 8.5s earlier: the model then separately fetched
+the tarball, verified its SHA-256 and compared npm lock SHA-512 integrity.
+The measured pending time is effectively unchanged. Overall completion improved
+6.2s (4.5%), while the approval window shrank 20.1s; approximate execution grew
+14.0s. These single runs do not prove total processing became faster or establish
+an SLA. Tool discovery, checksum work and report generation still take model time.
+
+Both terminal_events calls used `{}`. All seven MCP calls succeeded without
+retry. The real human approved the device request; actual capabilities, five
+saved Apps and device/preview state were read, followed by a delivered 188-character
+English report consistent with the results. No App ran; no App/file/input/lifecycle
+operation was attempted. The 958 App files matched the post-update baseline after
+both runs. The client stopped without revoking the AI grant or ending the human's
+Apps access; its independent resume credential is retained privately. The model's
+chat summary mistyped a shortened checksum suffix as 7e57 rather than 7a57; the
+actual full SHA-256 and npm integrity comparisons were correct. Do not use a chat
+abbreviation as an installation integrity check.
+
+One earlier R10 attempt was interrupted by a benchmark-recorder null-result bug
+at terminal_connect start, after installation/registration and same-thread tool
+loading had already succeeded. Resuming that conversation completed actual
+pending/approval/report at 138.5/150.2/160.3s, total 165.2s. That interrupted run is
+excluded from the comparison. After fixing and replay-checking the recorder, a
+new empty environment and a human-generated fresh invitation produced the valid
+run above. First attempt through final completion was 380.2s (6m20), including an
+82.1s inter-attempt explanation/re-invitation/preparation interval. This full time
+is distinct from the valid 132.9s, and is not attributed to product connection
+latency. No invitation, credential or raw model output is published.
+
+Viewer Pages dev edfd297a was delivered to 110 through normal Components; actual
+served assets and three-width browser checks passed. No Runtime action, existing
+grant takeover or hosted remote MCP deployment. This exact model/host path is
+verified; Claude Code/Desktop, user Mac and other hosts remain separate acceptance.
 
 ## Patch 0.1.1: first-connection guidance
 

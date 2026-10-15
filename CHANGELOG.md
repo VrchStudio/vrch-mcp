@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Fetch short first-connection instructions directly and resume the existing Codex conversation after setup.
+- Record the verified same-conversation first installation and its timing limits.
 
 ## 0.1.1
 
