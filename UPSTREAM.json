@@ -1,0 +1,26 @@
+{
+  "migrationSource": {
+    "repository": "VRCH Viewer Pages",
+    "commit": "0e4d041990062e36ea73dea1b10699aa135ca098",
+    "clientPath": "static/scripts/vrch_terminal_ai_client.mjs",
+    "clientSha256": "f8b985feb4058ee289869e356865850f309e9acf101e9f14e81c61a881f6f3ba",
+    "fileTransferPath": "static/scripts/vrch_file_transfer_client.mjs",
+    "fileTransferSha256": "66276a7f052ecece8b830595eadd99208dee01af307f7318baf4db8abcb05610",
+    "browserHashResources": [
+      {
+        "path": "static/scripts/vrch_file_hash_worker.js",
+        "sha256": "7533444b83a87da1fdae29eeba275100a2238dd49f253320ee80e4757947a9fa"
+      },
+      {
+        "path": "static/scripts/vrch_pages_sha256_fallback.js",
+        "sha256": "d2c84c4ac5681c5e0993c621b682f7d971d735bdc142466e76fc78c381e81232"
+      }
+    ]
+  },
+  "canonicalSources": {
+    "aiClient": "src/client.mjs",
+    "mcpAdapter": "src/mcp.mjs",
+    "fileTransferProtocol": "src/file-transfer.mjs"
+  },
+  "pagesConsumption": "Pin the public release and checksums; copy the generated legacy adapter and shared file module without editing the copies."
+}

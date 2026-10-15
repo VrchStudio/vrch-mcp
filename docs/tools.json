@@ -1,0 +1,801 @@
+{
+  "version": "0.1.0-rc.1",
+  "tools": [
+    {
+      "name": "apps_list",
+      "description": "List Apps and retained drafts on the invited host.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": "string"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "apps_state",
+      "description": "Read the active App draft, desired/saved revisions and actual target application states. Read this after interruption; do not infer application from file transfer success.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "apps_create",
+      "description": "Create a new App workspace. Returns its actual cwd; does not change the shared shell directory.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "apps_open",
+      "description": "Open an existing App or retained draft. Returns cwd; never overwrites a draft or sends cd to the shared PTY.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string"
+          },
+          "expectedRevision": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "appId"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "apps_publish",
+      "description": "After all files and build steps in a complete editing round finish, publish its exact draftRevision. A failed target load preserves the old applied revision.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string"
+          },
+          "expectedRevision": {
+            "type": "string"
+          },
+          "operationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceId",
+          "expectedRevision"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "apps_save",
+      "description": "Publish the completed draft and atomically save its .vrchapp package. Separate saved package success from preview/device application results.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string"
+          },
+          "expectedRevision": {
+            "type": "string"
+          },
+          "operationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceId",
+          "expectedRevision"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "apps_preview_input",
+      "description": "Send a normalized control or pointer event to the connected preview only. Requires current AI editing control; cannot launch or control the device App.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string"
+          },
+          "event": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "workspaceId",
+          "event"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "apps_operation_status",
+      "description": "Query the durable result of an interrupted App action. Do not automatically replay a mutation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "originalOperationId": {
+            "type": "string"
+          },
+          "originalAction": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "originalOperationId",
+          "originalAction"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "apps_export_begin",
+      "description": "Fix a read-only snapshot of an already saved App for file_download. Does not Save or require editing control.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string"
+          },
+          "expectedPackageDigest": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "appId",
+          "expectedPackageDigest"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "apps_import_inspect",
+      "description": "Validate a completed .vrchapp app-package upload. Returns its inspected reference and update conflict/confirmation state; file_done alone never imports an App.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "reference": {
+            "type": "string"
+          },
+          "operationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reference"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "apps_import_commit",
+      "description": "Commit an inspected App package using its previous package digest and the approved update decision.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "reference": {
+            "type": "string"
+          },
+          "expectedPackageDigest": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "confirmed": {
+            "type": "boolean"
+          },
+          "operationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reference",
+          "expectedPackageDigest"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "apps_launch",
+      "description": "Launch or focus a saved App on the device within this invitation’s enabled Launch/Exit scope. Read apps_state first. Supply replaceInstanceId only after deciding to replace that known target; new real I/O permissions still require the person. Does not save a draft.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string"
+          },
+          "expectedPackageDigest": {
+            "type": "string"
+          },
+          "replaceInstanceId": {
+            "type": "string"
+          },
+          "operationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "appId",
+          "expectedPackageDigest"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "apps_exit",
+      "description": "Exit the specified current device App within this invitation’s enabled Launch/Exit scope. Preserves the shell, access, App files and saved data. Read apps_state after interruption; never replay blindly.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "instanceId": {
+            "type": "string"
+          },
+          "operationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "instanceId"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "apps_input_targets",
+      "description": "Read the actual active preview and device App bindings before input. Coordinates are normalized within the App viewport, independent of the device’s 150% browser zoom. Does not launch, link or switch the person’s preview.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "apps_control",
+      "description": "Simulate known E1-E4 rotation/press and K1-K4 keys on an explicit active preview or device App. down/up/cancel send exact phases; click/long form a paired press using holdMs (default 50/800 ms). K1 always invokes the host Menu. Requires AI control; loss of control cancels only AI-held inputs.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "enum": [
+              "preview",
+              "device"
+            ]
+          },
+          "instanceId": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "integer"
+          },
+          "control": {
+            "type": "string",
+            "enum": [
+              "E1",
+              "E2",
+              "E3",
+              "E4",
+              "K1",
+              "K2",
+              "K3",
+              "K4"
+            ]
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "rotate",
+              "down",
+              "up",
+              "cancel",
+              "click",
+              "long"
+            ]
+          },
+          "delta": {
+            "type": "integer",
+            "minimum": -63,
+            "maximum": 63
+          },
+          "holdMs": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3000
+          }
+        },
+        "required": [
+          "target",
+          "instanceId",
+          "generation",
+          "control",
+          "type"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "apps_interface_input",
+      "description": "Click, drag, scroll, type English/ASCII text or send a key/chord in the active device App interface. Use event type guide_start to press the current App Guide Start on an explicit preview/device target; it does not approve access or I/O. Other host menus and permission dialogs remain human-operated. Read apps_input_targets first; pointer coordinates are normalized App coordinates, scroll deltas are CSS pixels. Delivery confirms sent/dispatched events; use screenshots/App state to verify the intended result.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "enum": [
+              "preview",
+              "device"
+            ],
+            "description": "Default device; preview supports guide_start only."
+          },
+          "instanceId": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "integer"
+          },
+          "event": {
+            "type": "object",
+            "description": "type: guide_start/click/drag/scroll/text/key. guide_start has no coordinates and only presses the current first-open Guide Start. Pointer x,y and drag toX,toY: 0..1. Scroll deltaX,deltaY: -2000..2000. Text: ASCII, max2048. Key: Enter/Tab/Backspace/Delete/arrows/Home/End/Escape or one ASCII character; ctrlKey/altKey/shiftKey/metaKey booleans."
+          }
+        },
+        "required": [
+          "instanceId",
+          "generation",
+          "event"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "apps_file_export",
+      "description": "Create a fixed download snapshot of a relative file in the current App workspace. Returns its reference and sha256; use file_download with app-workspace. Does not change preview or save the App.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceId",
+          "path"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "apps_file_commit",
+      "description": "Atomically deliver a completed app-workspace upload to a relative workspace path. Omit expectedSha256 only for a new file; supply the existing file sha256 to replace it. Does not publish, save or execute the file.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string"
+          },
+          "reference": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "expectedSha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "workspaceId",
+          "reference",
+          "path"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "file_upload",
+      "description": "Upload a local regular file through the shared resumable file transport. App packages must use .vrchapp and remain private until inspect/commit.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "app-package",
+              "app-workspace",
+              "boot-image"
+            ]
+          },
+          "workspaceId": {
+            "type": "string"
+          },
+          "operationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "purpose"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "file_download",
+      "description": "Download an authorized fixed App package reference to a new local path, verifying all bytes before an atomic no-overwrite commit.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "app-package",
+              "app-workspace"
+            ]
+          },
+          "reference": {
+            "type": "string"
+          },
+          "operationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "reference"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "file_pause",
+      "description": "Pause the current shared file transfer.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "file_resume",
+      "description": "Resume the current shared file transfer.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "file_cancel",
+      "description": "Cancel the current shared file transfer.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "ai_report",
+      "description": "Report the current action, result or next step to the person in one or two brief sentences in their language. Works while waiting for Allow AI and after approval; never include raw commands, secrets or internal reasoning.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "maxLength": 280
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "ai_capabilities",
+      "description": "Read actual enabled capabilities, targets, control owner and pause state for this approved connection. Unavailable capabilities do not prevent connection.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "terminal_connect",
+      "description": "Join an invited device Terminal. Wait for the human to approve once. Approval grants terminal observation and on-demand screenshots; Apps invitations grant AI editing on approval; ordinary Terminal invitations require the human to grant input control.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "resume": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "terminal_events",
+      "description": "Read terminal events and actual images shared by the human automatically. Use while waiting and between actions. Does not take a screenshot. One complete queued capture batch is returned per call, with separate images for every captured screen.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "waitSeconds": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 25
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "terminal_input",
+      "description": "Send shell input only while the human has granted AI input control. Shared screenshots are included automatically in the response.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "take_screenshot",
+      "description": "Capture the device screens once and return the complete batch as separate images. Default follows the human Multi-screen setting: on captures all screens, off captures primary only. While on, screen may select primary or a display connector from prior image metadata. Does not change input control.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "screen": {
+            "type": "string",
+            "description": "Optional: all, primary, or a display connector. Omit to follow the human setting."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "terminal_disconnect",
+      "description": "Disconnect this client. Retain the admitted session credential for resuming within its authorization.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    }
+  ]
+}

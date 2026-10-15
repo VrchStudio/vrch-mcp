@@ -1,0 +1,51 @@
+{
+  "name": "@vrchstudio/vrch-mcp",
+  "version": "0.1.0-rc.1",
+  "description": "Local MCP tools for invited VRCH device and My Apps collaboration",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.4.0"
+  },
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "bin": {
+    "vrch-mcp": "bin/vrch-mcp.mjs"
+  },
+  "exports": {
+    ".": "./src/index.mjs",
+    "./file-transfer": "./src/file-transfer.mjs"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "dist/",
+    "docs/",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md",
+    "UPSTREAM.json",
+    "NOTICE.md"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:check": "node scripts/build.mjs --check",
+    "test": "node --test tests/*.test.mjs",
+    "check": "npm run build:check && npm test",
+    "release:pack": "node scripts/release.mjs",
+    "test:package": "node scripts/check-package.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/VrchStudio/vrch-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/VrchStudio/vrch-mcp/issues"
+  },
+  "devDependencies": {
+    "ws": "8.22.0",
+    "@modelcontextprotocol/sdk": "1.32.1"
+  }
+}
