@@ -3,7 +3,7 @@
 ## 0.1.1
 
 - Clarify first connection, approval waiting and invitation reuse after setup.
-- Make the normal event wait explicit and keep long-operation tuning optional.
+- Make event waiting and queued approval handling explicit; keep long-operation tuning optional.
 
 ## 0.1.0
 

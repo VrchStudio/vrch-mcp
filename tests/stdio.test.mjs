@@ -39,8 +39,12 @@ for (const entry of ['bin/vrch-mcp.mjs','dist/vrch-mcp.mjs']) test(`official MCP
     const invalidWait = await call('terminal_events',{waitSeconds:55});
     assert.equal(invalidWait.isError,true);
     assert.match(invalidWait.content[0].text,/terminal_events\(\{\}\)/);
+    const pending = await call('terminal_events',{waitSeconds:0});
+    assert(pending.content.some(item=>item.type==='text' && item.text.includes('ai_pending')),'Invalid arguments must not consume queued events');
     device.approve();
-    const events = await call('terminal_events');
+    const events = {content:[]};
+    for (let attempt=0;attempt<4 && !events.content.some(item=>item.type==='text' && item.text.includes('apps_guide'));attempt++)
+      events.content.push(...(await call('terminal_events')).content);
     assert(events.content.some(item=>item.type==='text' && item.text.includes('ai_approved')));
     assert(events.content.some(item=>item.type==='text' && item.text.includes('apps_guide')));
     assert(!JSON.stringify(events).includes('fixture-secret'));
