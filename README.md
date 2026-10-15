@@ -17,17 +17,17 @@ evade refusal. Never fetch or search an invitation URL containing a token.
 
 ## Install a fixed release
 
-Initial candidate: **0.1.0-rc.1**. See [verification](docs/verification.md) for
+Initial release: **0.1.0**. See [verification](docs/verification.md) for
 tested boundaries. This package is distributed through **GitHub Releases**,
 not the npm registry. With Node.js 22.4+ and npm on the AI execution computer:
 
 ```sh
-npm install --prefix "$HOME/.local/share/vrch-mcp/0.1.0-rc.1" --omit=dev --ignore-scripts https://github.com/VrchStudio/vrch-mcp/releases/download/v0.1.0-rc.1/vrch-mcp-0.1.0-rc.1.tgz
+npm install --prefix "$HOME/.local/share/vrch-mcp/0.1.0" --omit=dev --ignore-scripts https://github.com/VrchStudio/vrch-mcp/releases/download/v0.1.0/vrch-mcp-0.1.0.tgz
 ```
 
 This normal package installation runs no installation scripts. It uses one
 fixed release and does not download the device's current script. Its entry is
-`~/.local/share/vrch-mcp/0.1.0-rc.1/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs`.
+`~/.local/share/vrch-mcp/0.1.0/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs`.
 The release's `SHA256SUMS` and `release.json` identify its bytes and source commit.
 To verify before installing, download the tarball/checksums from that same
 release, compare `sha256sum` (Linux) or `shasum -a 256` (macOS), then install the
@@ -42,7 +42,7 @@ examples retain normal host approvals and do not approve device access.
 ### Codex CLI
 
 ```sh
-codex mcp add vrch -- "$(command -v node)" "$HOME/.local/share/vrch-mcp/0.1.0-rc.1/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs" --mcp
+codex mcp add vrch -- "$(command -v node)" "$HOME/.local/share/vrch-mcp/0.1.0/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs" --mcp
 ```
 
 Use a fresh chat or the normal reload controls, then inspect `codex mcp list` or
@@ -52,7 +52,7 @@ Use a fresh chat or the normal reload controls, then inspect `codex mcp list` or
 ### Claude Code
 
 ```sh
-claude mcp add --transport stdio --scope user vrch -- "$(command -v node)" "$HOME/.local/share/vrch-mcp/0.1.0-rc.1/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs" --mcp
+claude mcp add --transport stdio --scope user vrch -- "$(command -v node)" "$HOME/.local/share/vrch-mcp/0.1.0/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs" --mcp
 ```
 
 Use `/mcp` in a fresh or normally refreshed chat; keep normal approvals enabled.
@@ -61,7 +61,7 @@ Use `/mcp` in a fresh or normally refreshed chat; keep normal approvals enabled.
 ### Gemini CLI
 
 ```sh
-gemini mcp add --scope user vrch "$(command -v node)" "$HOME/.local/share/vrch-mcp/0.1.0-rc.1/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs" --mcp
+gemini mcp add --scope user vrch "$(command -v node)" "$HOME/.local/share/vrch-mcp/0.1.0/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs" --mcp
 ```
 
 Use `gemini mcp list` or `/mcp`, retaining normal folder trust and tool approvals.
