@@ -640,7 +640,7 @@ class NativeFileV2 {
     Object.assign(this, {control, state, emit}); this.source = null; this.destination = null;
     this.autoResume = false; this.availability = '';
     this.core = new sharedFileV2.FileTransferClient({control, binary, epoch: () => state()?.epoch,
-      onProgress: value => emit({type: 'file_v2_progress', ...value})});
+      onProgress: value => {emit({type: 'file_v2_progress', ...value}); this.publishSource();}});
   }
   available(purpose, direction) {
     const state = this.state();
@@ -696,14 +696,19 @@ class NativeFileV2 {
   }
   pause() {this.autoResume = false; this.core.pause();}
   async resume() {await this.core.serial; return this.run(this.core.resume());}
+  publishSource() {
+    const job = this.core?.job;
+    if (job?.purpose !== 'boot-image' || !job.id || !this.state()) return;
+    const available = !!this.source, signature = job.id + ':' + available;
+    if (signature !== this.availability) {
+      this.control({type:'file_source_v2', id:job.id, available}); this.availability = signature;
+    }
+  }
   stateChanged() {
     const job = this.core.job, state = this.state();
     if (!job || job.purpose !== 'boot-image' || !state) return;
     const available = !!this.source;
-    const signature = job.id + ':' + available;
-    if (job.id && signature !== this.availability) {
-      this.control({type:'file_source_v2', id:job.id, available}); this.availability = signature;
-    }
+    this.publishSource();
     const allowed = state.owner === 'ai' && !state.private && !state.passwordRequired;
     if (!allowed && this.core.pending) this.interrupt();
     if (allowed && this.autoResume && !this.core.pending && available && !state.assistantTransfer?.pausedByUser) {

@@ -49,7 +49,9 @@ for (const changed of [false,true]) test(`Recovery human file control retains so
     client=createAIClient(`http://127.0.0.1:${server.address().port}/recovery/ai?invite=fixture`,{sessionFile:false,delay:10,emit:value=>events.push(value)});
     await until(()=>events.some(e=>e.type==='collaboration'));
     const upload=client.uploadFile(source,{purpose:'boot-image'});upload.catch(()=>{});
-    await until(()=>bytes.length>0);control('pause');
+    await until(()=>bytes.length>0);
+    await until(()=>frames.some(f=>f.type==='file_source_v2'&&f.available));
+    control('pause');
     await assert.rejects(upload,{code:'file_paused'});
     await until(()=>frames.some(f=>f.type==='file_pause'));
     const retained=Buffer.from(bytes);assert.deepEqual(retained,data.subarray(0,retained.length));
