@@ -12,18 +12,18 @@ Node.js22.4+ and npm on macOS/Linux. This is a fixed MIT public package; npm run
 no install scripts. Do not put an invitation or credential in MCP configuration.
 
 ```sh
-npm install --prefix "$HOME/.local/share/vrch-mcp/0.1.1" --omit=dev --ignore-scripts https://github.com/VrchStudio/vrch-mcp/releases/download/v0.1.1/vrch-mcp-0.1.1.tgz
+npm install --prefix "$HOME/.local/share/vrch-mcp/0.1.2" --omit=dev --ignore-scripts https://github.com/VrchStudio/vrch-mcp/releases/download/v0.1.2/vrch-mcp-0.1.2.tgz
 ```
 
-Tarball SHA-256: `2ae4ac64cd33f775400fa5c53e8cbaeaaa8410a0819ed0dc505c4a9e190e7a57`.
-Release: https://github.com/VrchStudio/vrch-mcp/releases/tag/v0.1.1 .
+Tarball SHA-256: `3dc3e03a8362606229267179b2debf3b429cc8185ba065fde1c1a87142e18891`.
+Release: https://github.com/VrchStudio/vrch-mcp/releases/tag/v0.1.2 .
 Select only your host's normal registration below; keep existing MCP entries.
 Already configured? Load that entry instead of reinstalling.
 
 ### Codex CLI
 
 ```sh
-codex mcp add vrch -- "$(command -v node)" "$HOME/.local/share/vrch-mcp/0.1.1/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs" --mcp
+codex mcp add vrch -- "$(command -v node)" "$HOME/.local/share/vrch-mcp/0.1.2/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs" --mcp
 ```
 
 Keep this conversation. If your host offers MCP refresh, use it. Codex CLI0.162.1
@@ -41,11 +41,11 @@ For noninteractive host integrations the native equivalent is
 Use the matching command only:
 
 ```sh
-claude mcp add --transport stdio --scope user vrch -- "$(command -v node)" "$HOME/.local/share/vrch-mcp/0.1.1/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs" --mcp
+claude mcp add --transport stdio --scope user vrch -- "$(command -v node)" "$HOME/.local/share/vrch-mcp/0.1.2/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs" --mcp
 ```
 
 ```sh
-gemini mcp add --scope user vrch "$(command -v node)" "$HOME/.local/share/vrch-mcp/0.1.1/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs" --mcp
+gemini mcp add --scope user vrch "$(command -v node)" "$HOME/.local/share/vrch-mcp/0.1.2/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs" --mcp
 ```
 
 Use that client's supported refresh or resume the current conversation after its

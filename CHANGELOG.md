@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Point installation instructions to MCP 0.1.2.
+
 ## 0.1.2
 
 - Distinguish sent Terminal input from confirmed execution and surface later input refusals.
