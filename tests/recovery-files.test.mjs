@@ -16,7 +16,7 @@ for (const changed of [false,true]) test(`Recovery human file control retains so
   const source=join(directory,'image.img.zst'),data=randomBytes(190003),events=[],frames=[];
   await writeFile(source,data);
   const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
-  let peer,spec,generation=1,bytes=Buffer.alloc(0),held=false,ackHeld=true,client;
+  let peer,spec,generation=1,bytes=Buffer.alloc(0),held=false,ackHeld=true,client,pauseConfirmation=false;
   const peers=new Set(),id='a'.repeat(32),lease=Date.now()+60000;
   const send=value=>peer.send(JSON.stringify(value));
   const state=()=>send({type:'collaboration',owner:'ai',epoch:2,private:false,passwordRequired:false,
@@ -40,7 +40,10 @@ for (const changed of [false,true]) test(`Recovery human file control retains so
         assert.equal(value.fileControl,'vrch-file-v2');
         send({type:value.type==='ai_join'?'ai_approved':'ai_resumed',credential:'fixture-secret',requestId:'fixture-request',leaseExpiresAt:lease});state();
       }else if(value.type==='file_begin'){spec=value;ready();}
-      else if(value.type==='file_pause')frame('file_paused',{phase:'paused',offset:bytes.length});
+      else if(value.type==='file_pause'){
+        if(held)frame('file_paused',{phase:'paused',offset:bytes.length});
+        else pauseConfirmation=true;
+      }
       else if(value.type==='file_resume'){assert(!held);generation++;ready();}
       else if(value.type==='file_finish')frame('file_done',{size:bytes.length,sha256:digest(bytes),transferComplete:true});
     });
@@ -61,6 +64,9 @@ for (const changed of [false,true]) test(`Recovery human file control retains so
     assert.equal(frames.filter(f=>f.type==='file_resume').length,0,'Human hold survives AI reconnect');
     if(changed)await writeFile(source,Buffer.alloc(data.length,1));
     ackHeld=false;control('resume');
+    await until(()=>pauseConfirmation);
+    assert.equal(frames.filter(f=>f.type==='file_resume').length,0,'Resume waits for receiver pause confirmation');
+    frame('file_paused',{phase:'paused',offset:bytes.length});
     if(changed){
       await until(()=>frames.some(f=>f.type==='file_source_v2'&&f.code==='source_changed'));
       assert.deepEqual(bytes,retained,'Changed source never replaces retained receiver bytes');

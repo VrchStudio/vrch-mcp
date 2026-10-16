@@ -694,8 +694,28 @@ class NativeFileV2 {
     if (this.source) {await this.source.close(); this.source = null;}
     return result;
   }
-  pause() {this.autoResume = false; this.core.pause();}
-  async resume() {await this.core.serial; return this.run(this.core.resume());}
+  rejectPause() {
+    const waiting = this.pauseWait; this.pauseWait = null;
+    waiting?.reject(fileError('file_paused', 'Transfer paused.'));
+  }
+  pause() {this.autoResume = false; this.rejectPause(); this.core.pause();}
+  async resume() {
+    await this.core.serial;
+    const job = this.core.job;
+    if (this.core.pending || this.pauseWait) throw fileError('transfer_conflict', 'The file is already active.');
+    if (job?.purpose === 'boot-image' && job.id) {
+      // A lost ACK or a control change can leave receiver I/O active. Use the
+      // existing pause acknowledgement as a fence before changing generation.
+      await new Promise((resolve, reject) => {
+        this.pauseWait = {id:job.id, resolve, reject};
+        try {this.core.send('file_pause');} catch (error) {this.pauseWait = null; reject(error);}
+      });
+      const state = this.state();
+      if (!state || state.owner !== 'ai' || state.private || state.passwordRequired || state.assistantTransfer?.pausedByUser)
+        throw fileError('file_paused', 'Transfer paused.');
+    }
+    return this.run(this.core.resume());
+  }
   publishSource() {
     const job = this.core?.job;
     if (job?.purpose !== 'boot-image' || !job.id || !this.state()) return;
@@ -710,7 +730,7 @@ class NativeFileV2 {
     const available = !!this.source;
     this.publishSource();
     const allowed = state.owner === 'ai' && !state.private && !state.passwordRequired;
-    if (!allowed && this.core.pending) this.interrupt();
+    if (!allowed && (this.core.pending || this.pauseWait)) this.interrupt();
     if (allowed && this.autoResume && !this.core.pending && available && !state.assistantTransfer?.pausedByUser) {
       this.autoResume = false; this.continueFromUI();
     }
@@ -724,6 +744,15 @@ class NativeFileV2 {
     return true;
   }
   handleFrame(event) {
+    if (this.pauseWait && event.id === this.pauseWait.id) {
+      if (['file_paused','file_done'].includes(event.type)) {
+        const waiting = this.pauseWait; this.pauseWait = null; waiting.resolve(); return true;
+      }
+      if (event.type === 'file_error' && event.action === 'file_pause') {
+        const waiting = this.pauseWait; this.pauseWait = null;
+        waiting.reject(fileError(event.code, event.message)); return true;
+      }
+    }
     if (this.core.job?.purpose === 'boot-image' && this.core.pending
         && event.type === 'file_error' && ['control_required','file_paused','transfer_interrupted'].includes(event.code))
       this.autoResume = true;
@@ -739,12 +768,13 @@ class NativeFileV2 {
   }
   async cancel() {
     this.autoResume = false; this.availability = '';
+    this.rejectPause();
     this.core.cancel();
     if (this.source) {await this.source.close(); this.source = null;}
     if (this.destination) {await this.destination.handle.close(); await unlink(this.destination.temporary).catch(() => {}); this.destination = null;}
     return {canceled: true};
   }
-  interrupt() {this.autoResume ||= !!this.core.pending; this.availability = ''; this.core.interrupt();}
+  interrupt() {this.autoResume ||= !!(this.core.pending || this.pauseWait); this.availability = ''; this.rejectPause(); this.core.interrupt();}
 }
 
 class NativeApps {
