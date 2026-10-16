@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.1.2
+
+- Distinguish sent Terminal input from confirmed execution and surface later input refusals.
+
 - Fetch short first-connection instructions directly and resume the existing Codex conversation after setup.
 - Record the verified same-conversation first installation and its timing limits.
 

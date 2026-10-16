@@ -899,7 +899,7 @@ function createAIClient(invitationURL, { WebSocketImpl = globalThis.WebSocket, e
 }
 
 // Generated from package.json by scripts/build.mjs.
-const VERSION = '0.1.1';
+const VERSION = '0.1.2';
 
 // These hints describe effects; they do not grant device permissions.
 const readOnly = new Set([
@@ -957,13 +957,13 @@ function createTerminalMCP({ send, createClient = createAIClient, allowHTTPOrigi
   function imageContent(image) {
     return [text({ ...image.metadata, type: 'screenshot' }), { type: 'image', mimeType: 'image/png', data: image.data.toString('base64') }];
   }
-  function drain(preferred) {
+  function drain(preferred, emptyMessage = 'No new terminal events.') {
     const content = events.splice(0).map(text); textBytes = 0;
     const available = new Set(client?.sharedScreenshots().map(image => image.metadata.id) || []);
     const batch = preferred || readyBatch();
     if (preferred && !preferred.every(image => available.has(image.metadata.id))) throw fileError('image_removed', 'The screenshot batch is no longer available.');
     for (const image of batch || []) { content.push(...imageContent(image)); unread.delete(image.metadata.id); }
-    return { content: content.length ? content : [text('No new terminal events.')] };
+    return { content: content.length ? content : [text(emptyMessage)] };
   }
   const schema = (properties = {}, required = []) => ({ type: 'object', properties, required, additionalProperties: false });
   const appTools = [
@@ -1057,6 +1057,7 @@ function createTerminalMCP({ send, createClient = createAIClient, allowHTTPOrigi
         if (name === 'terminal_disconnect') { client.close(); client = null; unread.clear(); reply(drain()); return; }
         if (name === 'terminal_input') {
           if (typeof args.data !== 'string' || !client.input(args.data)) throw new Error('AI input control is required.');
+          reply(drain(undefined, 'Input sent; execution is not yet confirmed. Read terminal_events for output or rejection.')); return;
         } else if (name === 'take_screenshot') {
           const batch = await client.takeScreenshot({ screen: args.screen }); reply(drain()); return;
         } else if (name === 'terminal_events') {
