@@ -85,7 +85,7 @@ test('native WebSocket preserves approval, output and resume across heartbeats',
     assert.deepEqual(frames.find(frame => frame.type === 'input'), { type: 'input', epoch: 3, data: 'pwd\n' });
     socket.terminate();
     await until(() => resumed && events.some(event => event.type === 'collaboration' && event.epoch === 4));
-    assert.deepEqual(frames.find(frame => frame.type === 'ai_resume'), { type: 'ai_resume', protocol: 'vrch-terminal-assist-v1', requestId: 'fixture-request', credential, outputOffset: output.length });
+    assert.deepEqual(frames.find(frame => frame.type === 'ai_resume'), { type: 'ai_resume', protocol: 'vrch-terminal-assist-v1', requestId: 'fixture-request', credential, outputOffset: output.length, fileControl:'vrch-file-v2' });
     assert.equal(client.input('uptime\n'), false, 'Human takeover remains authoritative after reconnect');
     socket.send(JSON.stringify({ type: 'error', code: 'ai_removed' }));
     await until(() => events.some(event => event.type === 'ended' && event.code === 'ai_removed'));

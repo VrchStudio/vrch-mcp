@@ -2,7 +2,10 @@
 
 ## Unreleased
 
-- Point installation instructions to MCP 0.1.2.
+## 0.1.3
+
+- Pause and continue Recovery boot-image uploads from the device interface and retain their source through reconnects.
+- Report completion and source-change failures after continuing an upload.
 
 ## 0.1.2
 

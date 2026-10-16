@@ -637,7 +637,8 @@ function validateHTTPOrigin(value) {
 
 class NativeFileV2 {
   constructor({control, binary, state, emit}) {
-    this.state = state; this.source = null; this.destination = null;
+    Object.assign(this, {control, state, emit}); this.source = null; this.destination = null;
+    this.autoResume = false; this.availability = '';
     this.core = new sharedFileV2.FileTransferClient({control, binary, epoch: () => state()?.epoch,
       onProgress: value => emit({type: 'file_v2_progress', ...value})});
   }
@@ -693,15 +694,52 @@ class NativeFileV2 {
     if (this.source) {await this.source.close(); this.source = null;}
     return result;
   }
-  pause() {this.core.pause();}
-  resume() {return this.run(this.core.resume());}
+  pause() {this.autoResume = false; this.core.pause();}
+  async resume() {await this.core.serial; return this.run(this.core.resume());}
+  stateChanged() {
+    const job = this.core.job, state = this.state();
+    if (!job || job.purpose !== 'boot-image' || !state) return;
+    const available = !!this.source;
+    const signature = job.id + ':' + available;
+    if (job.id && signature !== this.availability) {
+      this.control({type:'file_source_v2', id:job.id, available}); this.availability = signature;
+    }
+    const allowed = state.owner === 'ai' && !state.private && !state.passwordRequired;
+    if (!allowed && this.core.pending) this.interrupt();
+    if (allowed && this.autoResume && !this.core.pending && available && !state.assistantTransfer?.pausedByUser) {
+      this.autoResume = false; this.continueFromUI();
+    }
+  }
+  handleControl(event) {
+    const job = this.core.job;
+    if (event.type !== 'file_control_v2') return false;
+    if (job?.purpose !== 'boot-image' || job.id !== event.id || !this.source) return true;
+    if (event.action === 'pause') this.pause();
+    else if (event.action === 'resume') this.continueFromUI();
+    return true;
+  }
+  handleFrame(event) {
+    if (this.core.job?.purpose === 'boot-image' && this.core.pending
+        && event.type === 'file_error' && ['control_required','file_paused','transfer_interrupted'].includes(event.code))
+      this.autoResume = true;
+    return this.core.handle(event);
+  }
+  continueFromUI() {
+    if (this.core.pending || this.resuming) return;
+    this.resuming = true;
+    void this.resume().then(result => this.emit({...result, type:'file_v2_complete'})).catch(error => {
+      if (!['file_paused','control_required','transfer_interrupted'].includes(error.code))
+        this.control({type:'file_source_v2', id:this.core.job?.id, available:false, code:error.code || 'file_io_error'});
+    }).finally(() => {this.resuming = false;});
+  }
   async cancel() {
+    this.autoResume = false; this.availability = '';
     this.core.cancel();
     if (this.source) {await this.source.close(); this.source = null;}
     if (this.destination) {await this.destination.handle.close(); await unlink(this.destination.temporary).catch(() => {}); this.destination = null;}
     return {canceled: true};
   }
-  interrupt() {this.core.interrupt();}
+  interrupt() {this.autoResume ||= !!this.core.pending; this.availability = ''; this.core.interrupt();}
 }
 
 class NativeApps {
@@ -793,7 +831,7 @@ function createAIClient(invitationURL, { WebSocketImpl = globalThis.WebSocket, e
       socket.send(JSON.stringify({type: 'ai_report', operationId, message}));
     });
   }
-  const imageNegotiation = screenshots.enabled ? { screenshots: SCREENSHOT_PROTOCOL, imageInput: true } : {};
+  const imageNegotiation = {fileControl:'vrch-file-v2', ...(screenshots.enabled ? { screenshots: SCREENSHOT_PROTOCOL, imageInput: true } : {})};
   function end(code, forget = true) { if (stopped) return; stopped = true; clearTimeout(timer); if (credential) { try { if (forget) saved.remove(requestId); else persist(); } catch { emit({ type: 'resume_storage_error' }); } } credential = ''; invite = ''; upload.fail(fileError(code, 'AI access ended; incomplete file bytes are retained.'), { notify: false }); screenshots.interrupt(code, true); apps.interrupt(); interruptReports(); void fileV2.cancel().catch(() => {}); socket?.close(); emit({ type: 'ended', code }); }
   function connect() {
     if (stopped || (credential && !(purpose === 'apps' && expires === 0) && Date.now() >= expires)) { if (!stopped) end('lease_expired'); return; }
@@ -830,8 +868,10 @@ function createAIClient(invitationURL, { WebSocketImpl = globalThis.WebSocket, e
         if (state.file) ws.send(JSON.stringify({ type: 'file_source', id: state.file.id,
           available: !!(upload.job?.prepared && upload.job.name === state.file.name && upload.job.size === state.file.size) }));
         upload.stateChanged();
+        fileV2.stateChanged();
       }
-      if (eventData.protocol === 'vrch-file-v2') {fileV2.core.handle(eventData); return;}
+      if (fileV2.handleControl(eventData)) return;
+      if (eventData.protocol === 'vrch-file-v2') {fileV2.handleFrame(eventData); return;}
       if (apps.handle(eventData) || screenshots.handle(eventData) || upload.handle(eventData)) return;
       if (eventData.type === 'ready') { if (stream !== eventData.streamId) offset = 0; stream = eventData.streamId; offset = Math.max(offset, eventData.outputStart); }
       if (eventData.type === 'output') { header = eventData; return; }
@@ -899,7 +939,7 @@ function createAIClient(invitationURL, { WebSocketImpl = globalThis.WebSocket, e
 }
 
 // Generated from package.json by scripts/build.mjs.
-const VERSION = '0.1.2';
+const VERSION = '0.1.3';
 
 // These hints describe effects; they do not grant device permissions.
 const readOnly = new Set([
