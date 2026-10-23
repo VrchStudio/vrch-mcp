@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Point first-connection package verification to the release's correct checksum files.
+
 ## 0.1.3
 
 - Pause and continue Recovery boot-image uploads from the device interface and retain their source through reconnects.

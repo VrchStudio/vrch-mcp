@@ -1,3 +1,33 @@
+# Current local MCP verification
+
+2026-10-23 independent check of public release **0.1.3**, source
+`3333498d5208d1b09fd97698cf1caba7e024056f`. This is a local STDIO server;
+hosted `mcp.vrch.ai`, remote authentication and cloud file staging remain phase two.
+
+| Boundary | Result checked in this session |
+| --- | --- |
+| Linux / Node 22.23.3 / npm 10.9.9 | Generated bundles match source; 20 tests passed, one older-runtime-only test skipped |
+| Official MCP SDK 1.32.1 | Actual STDIO and WebSocket boundaries passed with simulated devices; no real device was connected |
+| Public release | Anonymous download matches both SHA256SUMS and release.json; all 23 packaged files match the recorded source |
+| Public-package installation | Scripts-disabled isolated production installation passed; zero production dependencies; actual STDIO exposed 30 tools and refused unconnected App access |
+| Public CI at this source | [Linux/macOS and Node 22.4/22/24 workflow passed](https://github.com/VrchStudio/vrch-mcp/actions/runs/38953768222) |
+
+The downloaded tarball SHA-256 is
+`4ff2754a0f550abd011aeb0e23b711426248d5dc6b62ce1ec4378e0a7df08bbd`.
+The short guide archived in the 0.1.3 package contains an incorrect copied
+checksum. The public source guide now directs verification to the release's
+generated checksum files; published assets and the package version are retained.
+
+The initial sandbox run could not open loopback listeners or reliably launch test
+subprocesses (EPERM). Repeating the same checks with the normal test permissions
+passed; that environment failure is distinct from a product assertion failure.
+The shell's default Node 12 was not used for acceptance.
+
+This check does not repeat a model-led first installation, user Mac/Desktop
+acceptance, real-device revocation/re-invitation, or the separate dual-surface
+Allow AI device acceptance. Existing grants and Apps were untouched. Historical
+host/device results below apply only to their recorded versions and boundaries.
+
 ## Direct setup and same-conversation loading (R10)
 
 2026-10-15: `docs/connect.md` is the direct plain-text first-connection entry;

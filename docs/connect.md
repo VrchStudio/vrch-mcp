@@ -15,7 +15,8 @@ no install scripts. Do not put an invitation or credential in MCP configuration.
 npm install --prefix "$HOME/.local/share/vrch-mcp/0.1.3" --omit=dev --ignore-scripts https://github.com/VrchStudio/vrch-mcp/releases/download/v0.1.3/vrch-mcp-0.1.3.tgz
 ```
 
-Tarball SHA-256: `3dc3e03a8362606229267179b2debf3b429cc8185ba065fde1c1a87142e18891`.
+To verify the tarball before installing, use `SHA256SUMS` from this same release.
+The release's `release.json` also records its SHA-256 and source commit.
 Release: https://github.com/VrchStudio/vrch-mcp/releases/tag/v0.1.3 .
 Select only your host's normal registration below; keep existing MCP entries.
 Already configured? Load that entry instead of reinstalling.

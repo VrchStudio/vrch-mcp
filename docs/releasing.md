@@ -14,6 +14,10 @@
    npm registry publication is optional and needs its own publisher access;
    the scoped package name is not a claim of namespace ownership.
 
+Keep the tarball checksum in the generated `SHA256SUMS` and `release.json` beside
+the archive. Packaged documentation points to those files: embedding the archive's
+own checksum inside it changes the archive bytes and invalidates that checksum.
+
 For future VrchStudio repositories, grant `VrchDeveloper` and `vrch-codex` at least
 Maintain at creation, preserving existing higher roles. Both stay organization
 Members. The existing base Write covers future code/PR/release work, not automatic
