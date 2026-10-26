@@ -36,3 +36,11 @@ Local App RPC follows the original device wait, up to 120 seconds. Interrupted
 results do not authorize replay; retain operation IDs where supported and read
 actual App/instance state. Remote connectionRef, principal isolation and service
 operation persistence remain outside this phase.
+
+
+`apps_host_input` is a separate device-only operation for Menu/Device. It uses
+whole-host coordinates, requires a live App binding and current AI input scope,
+and routes through the same owner/epoch/privacy checks as App input. The trusted
+Player allows only the named active surface and excludes access/permission and
+lifecycle controls. Clicks/drags use native touch events; interrupted gestures
+are canceled. It accepts no caller script, selector, URL or CDP method.

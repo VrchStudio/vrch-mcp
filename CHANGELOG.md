@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.1.4
+
+- Operate the active device App’s Menu and Device settings through an explicit host-input tool, preserving human-only approvals.
 
 - Point first-connection package verification to the release's correct checksum files.
 

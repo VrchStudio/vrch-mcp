@@ -6,7 +6,7 @@ const readOnly = new Set([
 ]);
 const destructive = new Set([
   'apps_publish', 'apps_save', 'apps_import_commit', 'apps_file_commit',
-  'apps_exit', 'apps_preview_input', 'apps_control', 'apps_interface_input',
+  'apps_exit', 'apps_preview_input', 'apps_control', 'apps_interface_input', 'apps_host_input',
   'terminal_input'
 ]);
 const idempotent = new Set([

@@ -1,6 +1,6 @@
 {
   "name": "@vrchstudio/vrch-mcp",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Local MCP tools for invited VRCH device and My Apps collaboration",
   "type": "module",
   "license": "MIT",

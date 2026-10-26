@@ -14,7 +14,7 @@ export async function relay() {
   const frames = [], reports = [], peers = new Set();
   let peer, transfer, bytes = Buffer.alloc(0), running = null;
   const state = {type:'collaboration', apps:'vrch-apps-v1', assistantProtocol:'vrch-ai-assist-v1',
-    assistantCapabilities:{apps:true, appLifecycle:true, interfaceInput:true, controls:true},
+    assistantCapabilities:{apps:true, appLifecycle:true, interfaceInput:true, controls:true, hostMenus:['menu','device']},
     owner:'ai', epoch:1, private:false, passwordRequired:false, fileTransferV2:true,
     filePurposes:[{purpose:'app-workspace', directions:['upload','download'], maxBytes:1024*1024}]};
   const send = value => peer.send(JSON.stringify(value));
@@ -51,7 +51,7 @@ export async function relay() {
         else if (frame.action === 'launch') {running={instanceId:'fixture-instance',appId:frame.args.appId}; result={running};}
         else if (frame.action === 'stop') {running=null; result={running};}
         else if (frame.action === 'input_targets') result={device:{instanceId:'fixture-instance',generation:1}};
-        else if (['control_input','interface_input'].includes(frame.action)) result={dispatched:true,event:frame.args.event};
+        else if (['control_input','interface_input','host_input'].includes(frame.action)) result={dispatched:true,event:frame.args.event};
         send({type:'apps_result',operationId:frame.operationId,action:frame.action,status:error?'failed':'succeeded',...(error?{error}:{result})});
       }
       if (frame.protocol === 'vrch-file-v2') {

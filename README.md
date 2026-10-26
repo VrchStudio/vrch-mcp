@@ -27,17 +27,17 @@ this conversation while loading the tools; no README search is needed.
 
 ## Install a fixed release
 
-Current release: **0.1.3**. See [verification](docs/verification.md) for
+Current release: **0.1.4**. See [verification](docs/verification.md) for
 tested boundaries. This package is distributed through **GitHub Releases**,
 not the npm registry. With Node.js 22.4+ and npm on the AI execution computer:
 
 ```sh
-npm install --prefix "$HOME/.local/share/vrch-mcp/0.1.3" --omit=dev --ignore-scripts https://github.com/VrchStudio/vrch-mcp/releases/download/v0.1.3/vrch-mcp-0.1.3.tgz
+npm install --prefix "$HOME/.local/share/vrch-mcp/0.1.4" --omit=dev --ignore-scripts https://github.com/VrchStudio/vrch-mcp/releases/download/v0.1.4/vrch-mcp-0.1.4.tgz
 ```
 
 This normal package installation runs no installation scripts. It uses one
 fixed release and does not download the device's current script. Its entry is
-`~/.local/share/vrch-mcp/0.1.3/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs`.
+`~/.local/share/vrch-mcp/0.1.4/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs`.
 The release's `SHA256SUMS` and `release.json` identify its bytes and source commit.
 To verify before installing, download the tarball/checksums from that same
 release, compare `sha256sum` (Linux) or `shasum -a 256` (macOS), then install the
@@ -52,7 +52,7 @@ examples retain normal host approvals and do not approve device access.
 ### Codex CLI
 
 ```sh
-codex mcp add vrch -- "$(command -v node)" "$HOME/.local/share/vrch-mcp/0.1.3/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs" --mcp
+codex mcp add vrch -- "$(command -v node)" "$HOME/.local/share/vrch-mcp/0.1.4/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs" --mcp
 ```
 
 Use the host's supported MCP refresh. CLI0.162.1 `/mcp` lists tools; it does not
@@ -66,7 +66,7 @@ processes. No timeout tuning is needed for connection/approval waiting.
 ### Claude Code
 
 ```sh
-claude mcp add --transport stdio --scope user vrch -- "$(command -v node)" "$HOME/.local/share/vrch-mcp/0.1.3/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs" --mcp
+claude mcp add --transport stdio --scope user vrch -- "$(command -v node)" "$HOME/.local/share/vrch-mcp/0.1.4/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs" --mcp
 ```
 
 Keep this conversation; use the client's supported refresh or resume after its
@@ -76,7 +76,7 @@ required reload. Keep normal approvals enabled.
 ### Gemini CLI
 
 ```sh
-gemini mcp add --scope user vrch "$(command -v node)" "$HOME/.local/share/vrch-mcp/0.1.3/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs" --mcp
+gemini mcp add --scope user vrch "$(command -v node)" "$HOME/.local/share/vrch-mcp/0.1.4/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs" --mcp
 ```
 
 Use `gemini mcp list` or `/mcp`, retaining normal folder trust and tool approvals.
@@ -161,3 +161,14 @@ npm run test:package
 need Node only; the compatibility bundle retains the old interactive default
 and exported functions for pinned Pages consumption. See
 [architecture](docs/architecture.md) and [releasing](docs/releasing.md).
+
+### Host menus
+
+On devices advertising `ai_capabilities.hostMenus`, use `apps_host_input` for
+`menu` or `device` with the current `instanceId` and `generation` from
+`apps_input_targets`. `{type:"open"}` opens that surface. Click, drag and scroll
+use0–1 coordinates across the entire host window, including Monitor bars;
+App coordinates remain unchanged in `apps_interface_input`. Navigation keys
+are supported, but browser shortcuts, access management, permission/AI approval
+and lifecycle buttons are excluded. Control loss, privacy mode and stale App
+bindings still reject input. Older devices report unsupported capability.

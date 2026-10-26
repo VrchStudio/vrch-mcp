@@ -45,6 +45,7 @@ export function runCLI({ defaultMode = 'mcp', defaultCatalog = 'stable' } = {}) 
       if (message.type === 'ai_report') console.log(JSON.stringify({type: 'ai_reported', result: await client.report(message.message)}));
       else if (message.type === 'ai_capabilities') console.log(JSON.stringify({type: 'ai_capabilities', result: client.capabilities()}));
       else if (message.type === 'apps_control') console.log(JSON.stringify({type:'apps_input_result',result:await client.appControl(message)}));
+      else if (message.type === 'apps_host_input') console.log(JSON.stringify({type:'apps_input_result',result:await client.appHostInput(message)}));
       else if (message.type === 'apps_interface_input') console.log(JSON.stringify({type:'apps_input_result',result:await client.appInterface(message)}));
       else if (message.type === 'input') client.input(message.data);
       else if (message.type === 'file_put') await client.putFile(message.path, { name: message.name, restart: message.restart ?? false });

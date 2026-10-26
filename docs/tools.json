@@ -1,5 +1,5 @@
 {
-  "version": "0.1.3",
+  "version": "0.1.4",
   "tools": [
     {
       "name": "apps_list",
@@ -431,8 +431,47 @@
       }
     },
     {
+      "name": "apps_host_input",
+      "description": "Open and operate Menu or Device for the active device App, only when ai_capabilities.hostMenus enables that surface and AI owns control. Read apps_input_targets first. event open opens the named menu; click/drag/scroll coordinates are normalized to the ENTIRE host window (including Monitor bars), not the App viewport. Supports touch-style pointer interaction and navigation keys. Does not operate permission/AI approval, access-management or lifecycle controls. Never sends caller-supplied script or selectors. Verify screenshots/state after delivery.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "instanceId": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "integer"
+          },
+          "surface": {
+            "type": "string",
+            "enum": [
+              "menu",
+              "device"
+            ]
+          },
+          "event": {
+            "type": "object",
+            "description": "type: open/click/drag/scroll/key. open needs no coordinates. Pointer x,y and drag toX,toY: 0..1 of the whole host window. Scroll deltaX,deltaY: -2000..2000 CSS pixels. Keys: Tab/Enter/Escape/space/arrows/Home/End; optional shiftKey. No text or browser modifier shortcuts."
+          }
+        },
+        "required": [
+          "instanceId",
+          "generation",
+          "surface",
+          "event"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
       "name": "apps_interface_input",
-      "description": "Click, drag, scroll, type English/ASCII text or send a key/chord in the active device App interface. Use event type guide_start to press the current App Guide Start on an explicit preview/device target; it does not approve access or I/O. Other host menus and permission dialogs remain human-operated. Read apps_input_targets first; pointer coordinates are normalized App coordinates, scroll deltas are CSS pixels. Delivery confirms sent/dispatched events; use screenshots/App state to verify the intended result.",
+      "description": "Click, drag, scroll, type English/ASCII text or send a key/chord in the active device App interface. Use event type guide_start to press the current App Guide Start on an explicit preview/device target; it does not approve access or I/O. Use apps_host_input for Menu/Device. Permission dialogs remain human-operated. Read apps_input_targets first; pointer coordinates are normalized App coordinates, scroll deltas are CSS pixels. Delivery confirms sent/dispatched events; use screenshots/App state to verify the intended result.",
       "inputSchema": {
         "type": "object",
         "properties": {

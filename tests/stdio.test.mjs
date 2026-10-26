@@ -53,6 +53,13 @@ for (const entry of ['bin/vrch-mcp.mjs','dist/vrch-mcp.mjs']) test(`official MCP
     assert.equal(JSON.parse((await call('apps_list')).content[0].text).apps[0].id,'fixture-app');
     await call('apps_launch',{appId:'fixture-app',expectedPackageDigest:'fixture-digest'});
     assert.equal(JSON.parse((await call('apps_state')).content[0].text).running.instanceId,'fixture-instance');
+    await call('apps_host_input',{instanceId:'fixture-instance',generation:1,surface:'device',event:{type:'open'}});
+    await call('apps_host_input',{instanceId:'fixture-instance',generation:1,surface:'device',event:{type:'click',x:.4,y:.3}});
+    assert.equal(device.frames.filter(f=>f.action==='host_input').length,2);
+    device.update({assistantCapabilities:{apps:true,appLifecycle:true,hostMenus:[]}});await call('terminal_events',{waitSeconds:0});
+    assert.equal((await call('apps_host_input',{instanceId:'fixture-instance',generation:1,surface:'device',event:{type:'open'}})).isError,true);
+    assert.equal(device.frames.filter(f=>f.action==='host_input').length,2,'older devices are not sent a new operation');
+    device.update({assistantCapabilities:{apps:true,appLifecycle:true,hostMenus:['menu','device']}});await call('terminal_events',{waitSeconds:0});
     await call('apps_interface_input',{target:'device',instanceId:'fixture-instance',generation:1,event:{type:'guide_start'}});
     await call('apps_interface_input',{instanceId:'fixture-instance',generation:1,event:{type:'text',text:'hello'}});
     await call('apps_control',{target:'device',instanceId:'fixture-instance',generation:1,control:'E1',type:'rotate',delta:1});
