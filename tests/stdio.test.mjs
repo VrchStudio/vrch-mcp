@@ -73,6 +73,17 @@ for (const entry of ['bin/vrch-mcp.mjs','dist/vrch-mcp.mjs']) test(`official MCP
     await call('terminal_events',{waitSeconds:0});
     await call('apps_exit',{instanceId:'fixture-instance'});
     assert.equal(JSON.parse((await call('apps_state')).content[0].text).running,null);
+    device.update({owner:'human',private:true,passwordRequired:true,assistantCapabilities:{apps:true,cancelPrivateInput:true}});
+    await call('terminal_events',{waitSeconds:0});
+    assert.equal((await call('terminal_input',{data:'must-not-send'})).isError,true);
+    const canceled=await call('terminal_cancel_private_input',{resumeAI:true});
+    assert.equal(canceled.isError,undefined);
+    assert.equal(JSON.parse(canceled.content[0].text).canceled,true);
+    const cancelFrame=device.frames.find(frame=>frame.type==='private_cancel');
+    assert.deepEqual(Object.keys(cancelFrame).sort(),['epoch','operationId','resumeAI','type']);
+    device.update({assistantCapabilities:{apps:true,cancelPrivateInput:false}});await call('terminal_events',{waitSeconds:0});
+    assert.equal((await call('terminal_cancel_private_input')).isError,true);
+    assert.equal(device.frames.filter(frame=>frame.type==='private_cancel').length,1);
     device.remove();
     await call('terminal_events',{waitSeconds:1});
     assert.equal((await call('apps_list')).isError,true);

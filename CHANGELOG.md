@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.5
+
+- Let an approved AI cancel private input when requested, without reading or submitting it, and explicitly resume authorized editing.
+
+
 ## 0.1.4
 
 - Operate the active device App’s Menu and Device settings through an explicit host-input tool, preserving human-only approvals.

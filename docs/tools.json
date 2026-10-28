@@ -1,5 +1,5 @@
 {
-  "version": "0.1.4",
+  "version": "0.1.5",
   "tools": [
     {
       "name": "apps_list",
@@ -705,6 +705,26 @@
         "required": [
           "message"
         ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "terminal_cancel_private_input",
+      "description": "Only when the person explicitly asks, cancel the current private input without reading or submitting it. Interrupts the waiting command and discards unsubmitted input; submitted input cannot be retracted. Set resumeAI true only when the person also authorizes continuing AI work. Requires an approved connection and the device cancelPrivateInput capability. Inspect state after interruption; never replay blindly.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "resumeAI": {
+            "type": "boolean"
+          }
+        },
+        "required": [],
         "additionalProperties": false
       },
       "annotations": {

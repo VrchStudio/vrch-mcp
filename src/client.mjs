@@ -640,9 +640,12 @@ export function createAIClient(invitationURL, { WebSocketImpl = globalThis.WebSo
   const apps = new NativeApps({state: () => state,
     control: frame => {if (socket?.readyState !== WebSocketImpl.OPEN) return false; socket.send(JSON.stringify(frame)); return true;}});
   const reports = new Map();
+  const privateCancels = new Map();
   function interruptReports() {
     for (const job of reports.values()) {clearTimeout(job.timer); job.reject(fileError('connection_interrupted', 'Report was not delivered.'));}
     reports.clear();
+    for (const job of privateCancels.values()) {clearTimeout(job.timer); job.reject(fileError("connection_interrupted", "Private input cancellation was not confirmed; inspect state before retrying."));}
+    privateCancels.clear();
   }
   function report(message) {
     if (!(pending || state?.assistantProtocol === 'vrch-ai-assist-v1') || socket?.readyState !== WebSocketImpl.OPEN)
@@ -654,6 +657,17 @@ export function createAIClient(invitationURL, { WebSocketImpl = globalThis.WebSo
       const timer = setTimeout(() => {reports.delete(operationId); reject(fileError('connection_interrupted', 'Report was not confirmed.'));}, 10000);
       reports.set(operationId, {resolve, reject, timer});
       socket.send(JSON.stringify({type: 'ai_report', operationId, message}));
+    });
+  }
+  function cancelPrivateInput({resumeAI=false}={}) {
+    if (!state?.assistantCapabilities?.cancelPrivateInput || socket?.readyState !== WebSocketImpl.OPEN)
+      return Promise.reject(fileError('unsupported_capability', 'Update device Components and Runtime to cancel private input.'));
+    if (typeof resumeAI !== 'boolean') return Promise.reject(fileError('invalid_cancel', 'resumeAI must be boolean.'));
+    const operationId = sharedFileV2.operationId();
+    return new Promise((resolve,reject) => {
+      const timer=setTimeout(()=>{privateCancels.delete(operationId);reject(fileError('connection_interrupted','Cancellation was not confirmed; inspect state before retrying.'));},10000);
+      privateCancels.set(operationId,{resolve,reject,timer});
+      socket.send(JSON.stringify({type:'private_cancel',operationId,epoch:state.epoch,resumeAI}));
     });
   }
   const imageNegotiation = {fileControl:'vrch-file-v2', ...(screenshots.enabled ? { screenshots: SCREENSHOT_PROTOCOL, imageInput: true } : {})};
@@ -679,6 +693,11 @@ export function createAIClient(invitationURL, { WebSocketImpl = globalThis.WebSo
       let eventData;
       try { eventData = JSON.parse(event.data); } catch { end('invalid_control'); return; }
       if (eventData.type === 'ai_pending') pending = eventData.assistantProtocol === 'vrch-ai-assist-v1';
+      if (eventData.type === 'private_cancel_result') {
+        const job=privateCancels.get(eventData.operationId);
+        if (job) {clearTimeout(job.timer);privateCancels.delete(eventData.operationId);eventData.ok ? job.resolve({canceled:eventData.canceled,owner:eventData.owner}) : job.reject(fileError(eventData.code,'Private input cancellation was not completed.'));}
+        return;
+      }
       if (eventData.type === 'ai_report_result') {
         const job = reports.get(eventData.operationId);
         if (job) {clearTimeout(job.timer); reports.delete(eventData.operationId); eventData.ok ? job.resolve({delivered: true}) : job.reject(fileError(eventData.code, 'Progress report was not accepted.'));}
@@ -742,6 +761,7 @@ export function createAIClient(invitationURL, { WebSocketImpl = globalThis.WebSo
       return apps.request('host_input',{target:'device',instanceId,generation,surface,event:{...event,sequence:++appInputSequence}});
     },
     appInterface: ({target='device',instanceId,generation,event}) => apps.request('interface_input',{target,instanceId,generation,event:{...event,sequence:++appInputSequence}}),
+    cancelPrivateInput,
     capabilities: () => state?.assistantCapabilities || null,
     appsRequest: (action, args, options) => apps.request(action, args, options),
     uploadFile: (path, options) => fileV2.upload(path, options),

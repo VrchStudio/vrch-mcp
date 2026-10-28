@@ -850,9 +850,12 @@ function createAIClient(invitationURL, { WebSocketImpl = globalThis.WebSocket, e
   const apps = new NativeApps({state: () => state,
     control: frame => {if (socket?.readyState !== WebSocketImpl.OPEN) return false; socket.send(JSON.stringify(frame)); return true;}});
   const reports = new Map();
+  const privateCancels = new Map();
   function interruptReports() {
     for (const job of reports.values()) {clearTimeout(job.timer); job.reject(fileError('connection_interrupted', 'Report was not delivered.'));}
     reports.clear();
+    for (const job of privateCancels.values()) {clearTimeout(job.timer); job.reject(fileError("connection_interrupted", "Private input cancellation was not confirmed; inspect state before retrying."));}
+    privateCancels.clear();
   }
   function report(message) {
     if (!(pending || state?.assistantProtocol === 'vrch-ai-assist-v1') || socket?.readyState !== WebSocketImpl.OPEN)
@@ -864,6 +867,17 @@ function createAIClient(invitationURL, { WebSocketImpl = globalThis.WebSocket, e
       const timer = setTimeout(() => {reports.delete(operationId); reject(fileError('connection_interrupted', 'Report was not confirmed.'));}, 10000);
       reports.set(operationId, {resolve, reject, timer});
       socket.send(JSON.stringify({type: 'ai_report', operationId, message}));
+    });
+  }
+  function cancelPrivateInput({resumeAI=false}={}) {
+    if (!state?.assistantCapabilities?.cancelPrivateInput || socket?.readyState !== WebSocketImpl.OPEN)
+      return Promise.reject(fileError('unsupported_capability', 'Update device Components and Runtime to cancel private input.'));
+    if (typeof resumeAI !== 'boolean') return Promise.reject(fileError('invalid_cancel', 'resumeAI must be boolean.'));
+    const operationId = sharedFileV2.operationId();
+    return new Promise((resolve,reject) => {
+      const timer=setTimeout(()=>{privateCancels.delete(operationId);reject(fileError('connection_interrupted','Cancellation was not confirmed; inspect state before retrying.'));},10000);
+      privateCancels.set(operationId,{resolve,reject,timer});
+      socket.send(JSON.stringify({type:'private_cancel',operationId,epoch:state.epoch,resumeAI}));
     });
   }
   const imageNegotiation = {fileControl:'vrch-file-v2', ...(screenshots.enabled ? { screenshots: SCREENSHOT_PROTOCOL, imageInput: true } : {})};
@@ -889,6 +903,11 @@ function createAIClient(invitationURL, { WebSocketImpl = globalThis.WebSocket, e
       let eventData;
       try { eventData = JSON.parse(event.data); } catch { end('invalid_control'); return; }
       if (eventData.type === 'ai_pending') pending = eventData.assistantProtocol === 'vrch-ai-assist-v1';
+      if (eventData.type === 'private_cancel_result') {
+        const job=privateCancels.get(eventData.operationId);
+        if (job) {clearTimeout(job.timer);privateCancels.delete(eventData.operationId);eventData.ok ? job.resolve({canceled:eventData.canceled,owner:eventData.owner}) : job.reject(fileError(eventData.code,'Private input cancellation was not completed.'));}
+        return;
+      }
       if (eventData.type === 'ai_report_result') {
         const job = reports.get(eventData.operationId);
         if (job) {clearTimeout(job.timer); reports.delete(eventData.operationId); eventData.ok ? job.resolve({delivered: true}) : job.reject(fileError(eventData.code, 'Progress report was not accepted.'));}
@@ -952,6 +971,7 @@ function createAIClient(invitationURL, { WebSocketImpl = globalThis.WebSocket, e
       return apps.request('host_input',{target:'device',instanceId,generation,surface,event:{...event,sequence:++appInputSequence}});
     },
     appInterface: ({target='device',instanceId,generation,event}) => apps.request('interface_input',{target,instanceId,generation,event:{...event,sequence:++appInputSequence}}),
+    cancelPrivateInput,
     capabilities: () => state?.assistantCapabilities || null,
     appsRequest: (action, args, options) => apps.request(action, args, options),
     uploadFile: (path, options) => fileV2.upload(path, options),
@@ -978,7 +998,7 @@ function createAIClient(invitationURL, { WebSocketImpl = globalThis.WebSocket, e
 }
 
 // Generated from package.json by scripts/build.mjs.
-const VERSION = '0.1.4';
+const VERSION = '0.1.5';
 
 // These hints describe effects; they do not grant device permissions.
 const readOnly = new Set([
@@ -1074,6 +1094,7 @@ function createTerminalMCP({ send, createClient = createAIClient, allowHTTPOrigi
   const tools = [
     ...appTools,
     {name: 'ai_report', description: 'Report the current action, result or next step to the person in one or two brief sentences in their language. Works while waiting for Allow AI and after approval; never include raw commands, secrets or internal reasoning.', inputSchema: schema({message: {type: 'string', maxLength: 280}}, ['message'])},
+    {name:'terminal_cancel_private_input', description:'Only when the person explicitly asks, cancel the current private input without reading or submitting it. Interrupts the waiting command and discards unsubmitted input; submitted input cannot be retracted. Set resumeAI true only when the person also authorizes continuing AI work. Requires an approved connection and the device cancelPrivateInput capability. Inspect state after interruption; never replay blindly.', inputSchema:schema({resumeAI:{type:'boolean'} })},
     {name: 'ai_capabilities', description: 'Read actual enabled capabilities, targets, control owner and pause state for this approved connection. Unavailable capabilities do not prevent connection.', inputSchema: schema()},
     { name: 'terminal_connect', description: 'Join an invited device Terminal. Wait for the human to approve once. Approval grants terminal observation and on-demand screenshots; Apps invitations grant AI editing on approval; ordinary Terminal invitations require the human to grant input control.', inputSchema: schema({ url: { type: 'string' }, resume: { type: 'boolean' } }, ['url']) },
     { name: 'terminal_events', description: 'Read terminal events and actual images shared by the human automatically. Call terminal_events({}) while waiting for ai_pending/approval and between actions. Omit waitSeconds for the normal 20-second wait; returns early on events. Does not take a screenshot. One complete queued capture batch is returned per call, with separate images for every captured screen.', inputSchema: schema({ waitSeconds: { type: 'number', minimum: 0, maximum: 25, default: 20, description: 'Optional; omit for 20 seconds. Valid range 0..25; returns early when events arrive.' } }) },
@@ -1117,6 +1138,7 @@ function createTerminalMCP({ send, createClient = createAIClient, allowHTTPOrigi
         if (!client) throw new Error('Connect to an invited Terminal first.');
         if (!admitted && !['ai_report', 'ai_capabilities', 'terminal_events', 'terminal_disconnect'].includes(name)) throw fileError('approval_required', 'Wait for the person to Allow AI before using this tool.');
         if (name === 'ai_report') {reply({content: [text(await client.report(args.message))]}); return;}
+        if (name === 'terminal_cancel_private_input') {reply({content:[text(await client.cancelPrivateInput(args))]});return;}
         if (name === 'ai_capabilities') {reply({content: [text(client.capabilities() || 'Waiting for approval.')]}); return;}
         if (name === 'apps_control') {reply({content:[text(await client.appControl(args))]}); return;}
         if (name === 'apps_host_input') {reply({content:[text(await client.appHostInput(args))]}); return;}

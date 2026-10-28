@@ -41,6 +41,13 @@ export async function relay() {
         if (frame.credential !== 'fixture-secret') {send({type:'error',code:'ai_revoked'}); return;}
         send({type:'ai_resumed',leaseExpiresAt:0}); send(state);
       }
+      if (frame.type === 'private_cancel') {
+        if (frame.epoch !== state.epoch || !state.assistantCapabilities.cancelPrivateInput)
+          send({type:'private_cancel_result',operationId:frame.operationId,ok:false,code:'stale_input'});
+        else {const canceled=state.private;state.private=false;state.passwordRequired=false;
+          if(canceled&&frame.resumeAI)state.owner='ai';state.epoch++;send(state);
+          send({type:'private_cancel_result',operationId:frame.operationId,ok:true,canceled,owner:state.owner});}
+      }
       if (frame.type === 'ai_report') {reports.push(frame.message); send({type:'ai_report_result',operationId:frame.operationId,ok:true});}
       if (frame.type === 'apps_request') {
         let result = {}, error;

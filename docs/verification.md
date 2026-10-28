@@ -269,3 +269,7 @@ is separate. It does not validate Claude Code's approval behavior or user Mac.
 The temporary client stopped; the device grant was not revoked and its private
 resume credential is retained separately. No real invitation or raw model output
 is published. No product code or Runtime was changed by this test.
+
+## 0.1.5 private-input cancellation
+
+Linux Node22.23.3: real MCP SDK/STDIO and WebSocket cancellation, unsupported-device refusal, blocked ordinary input, and no private data fields pass. Clean package installation exposes the tool with zero production dependencies. Device-side tests exercise actual PTY interruption and privacy restoration separately. macOS device acceptance is not claimed by these Linux checks.

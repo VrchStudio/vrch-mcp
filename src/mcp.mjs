@@ -71,6 +71,7 @@ export function createTerminalMCP({ send, createClient = createAIClient, allowHT
   const tools = [
     ...appTools,
     {name: 'ai_report', description: 'Report the current action, result or next step to the person in one or two brief sentences in their language. Works while waiting for Allow AI and after approval; never include raw commands, secrets or internal reasoning.', inputSchema: schema({message: {type: 'string', maxLength: 280}}, ['message'])},
+    {name:'terminal_cancel_private_input', description:'Only when the person explicitly asks, cancel the current private input without reading or submitting it. Interrupts the waiting command and discards unsubmitted input; submitted input cannot be retracted. Set resumeAI true only when the person also authorizes continuing AI work. Requires an approved connection and the device cancelPrivateInput capability. Inspect state after interruption; never replay blindly.', inputSchema:schema({resumeAI:{type:'boolean'} })},
     {name: 'ai_capabilities', description: 'Read actual enabled capabilities, targets, control owner and pause state for this approved connection. Unavailable capabilities do not prevent connection.', inputSchema: schema()},
     { name: 'terminal_connect', description: 'Join an invited device Terminal. Wait for the human to approve once. Approval grants terminal observation and on-demand screenshots; Apps invitations grant AI editing on approval; ordinary Terminal invitations require the human to grant input control.', inputSchema: schema({ url: { type: 'string' }, resume: { type: 'boolean' } }, ['url']) },
     { name: 'terminal_events', description: 'Read terminal events and actual images shared by the human automatically. Call terminal_events({}) while waiting for ai_pending/approval and between actions. Omit waitSeconds for the normal 20-second wait; returns early on events. Does not take a screenshot. One complete queued capture batch is returned per call, with separate images for every captured screen.', inputSchema: schema({ waitSeconds: { type: 'number', minimum: 0, maximum: 25, default: 20, description: 'Optional; omit for 20 seconds. Valid range 0..25; returns early when events arrive.' } }) },
@@ -114,6 +115,7 @@ export function createTerminalMCP({ send, createClient = createAIClient, allowHT
         if (!client) throw new Error('Connect to an invited Terminal first.');
         if (!admitted && !['ai_report', 'ai_capabilities', 'terminal_events', 'terminal_disconnect'].includes(name)) throw fileError('approval_required', 'Wait for the person to Allow AI before using this tool.');
         if (name === 'ai_report') {reply({content: [text(await client.report(args.message))]}); return;}
+        if (name === 'terminal_cancel_private_input') {reply({content:[text(await client.cancelPrivateInput(args))]});return;}
         if (name === 'ai_capabilities') {reply({content: [text(client.capabilities() || 'Waiting for approval.')]}); return;}
         if (name === 'apps_control') {reply({content:[text(await client.appControl(args))]}); return;}
         if (name === 'apps_host_input') {reply({content:[text(await client.appHostInput(args))]}); return;}
