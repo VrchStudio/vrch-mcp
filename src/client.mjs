@@ -641,11 +641,14 @@ export function createAIClient(invitationURL, { WebSocketImpl = globalThis.WebSo
     control: frame => {if (socket?.readyState !== WebSocketImpl.OPEN) return false; socket.send(JSON.stringify(frame)); return true;}});
   const reports = new Map();
   const privateCancels = new Map();
+  const privateCommands = new Map();
   function interruptReports() {
     for (const job of reports.values()) {clearTimeout(job.timer); job.reject(fileError('connection_interrupted', 'Report was not delivered.'));}
     reports.clear();
     for (const job of privateCancels.values()) {clearTimeout(job.timer); job.reject(fileError("connection_interrupted", "Private input cancellation was not confirmed; inspect state before retrying."));}
     privateCancels.clear();
+    for (const job of privateCommands.values()) {clearTimeout(job.timer); job.reject(fileError('connection_interrupted', 'Private command readiness was not confirmed. Inspect current state before retrying.'));}
+    privateCommands.clear();
   }
   function report(message) {
     if (!(pending || state?.assistantProtocol === 'vrch-ai-assist-v1') || socket?.readyState !== WebSocketImpl.OPEN)
@@ -657,6 +660,21 @@ export function createAIClient(invitationURL, { WebSocketImpl = globalThis.WebSo
       const timer = setTimeout(() => {reports.delete(operationId); reject(fileError('connection_interrupted', 'Report was not confirmed.'));}, 10000);
       reports.set(operationId, {resolve, reject, timer});
       socket.send(JSON.stringify({type: 'ai_report', operationId, message}));
+    });
+  }
+  function runPrivate({argv,timeoutSeconds=120}={}) {
+    if (!state?.assistantCapabilities?.privateCommand || socket?.readyState !== WebSocketImpl.OPEN)
+      return Promise.reject(fileError('unsupported_capability', 'Update device Components and Runtime to use Private Input commands.'));
+    if (state.owner !== 'ai' || state.private || state.passwordRequired)
+      return Promise.reject(fileError('control_required', 'AI input control is required before starting a private command.'));
+    if (!Array.isArray(argv) || argv.length < 1 || argv.length > 32 || argv.some(arg=>typeof arg !== 'string' || arg.includes('\0'))
+        || !argv[0] || new TextEncoder().encode(argv.join('')).length > 16384 || !Number.isInteger(timeoutSeconds) || timeoutSeconds < 10 || timeoutSeconds > 300)
+      return Promise.reject(fileError('invalid_private_command', 'Supply nonsecret command arguments and a timeout from 10 to 300 seconds.'));
+    const operationId = sharedFileV2.operationId();
+    return new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>{privateCommands.delete(operationId);reject(fileError('connection_interrupted','Private command readiness was not confirmed. Do not submit credentials outside Private Input.'));},10000);
+      privateCommands.set(operationId,{resolve,reject,timer});
+      socket.send(JSON.stringify({type:'private_command',operationId,epoch:state.epoch,argv,timeoutSeconds}));
     });
   }
   function cancelPrivateInput({resumeAI=false}={}) {
@@ -693,6 +711,20 @@ export function createAIClient(invitationURL, { WebSocketImpl = globalThis.WebSo
       let eventData;
       try { eventData = JSON.parse(event.data); } catch { end('invalid_control'); return; }
       if (eventData.type === 'ai_pending') pending = eventData.assistantProtocol === 'vrch-ai-assist-v1';
+      if (eventData.type === 'private_command_result') {
+        const job=privateCommands.get(eventData.operationId);
+        if(job) {
+          clearTimeout(job.timer);privateCommands.delete(eventData.operationId);
+          if(eventData.ok && eventData.private === true && state?.private === true)
+            job.resolve({operationId:eventData.operationId,status:'waiting_for_private_input',private:true});
+          else job.reject(fileError(eventData.code || 'private_not_confirmed','Private Input was not confirmed. Do not enter credentials in the ordinary terminal.'));
+        }
+        return;
+      }
+      if (eventData.type === 'private_command_finished') {
+        const job=privateCommands.get(eventData.operationId);
+        if(job){clearTimeout(job.timer);privateCommands.delete(eventData.operationId);job.reject(fileError('private_command_ended','The command ended before a Private Input prompt was confirmed.'));}
+      }
       if (eventData.type === 'private_cancel_result') {
         const job=privateCancels.get(eventData.operationId);
         if (job) {clearTimeout(job.timer);privateCancels.delete(eventData.operationId);eventData.ok ? job.resolve({canceled:eventData.canceled,owner:eventData.owner}) : job.reject(fileError(eventData.code,'Private input cancellation was not completed.'));}
@@ -761,6 +793,7 @@ export function createAIClient(invitationURL, { WebSocketImpl = globalThis.WebSo
       return apps.request('host_input',{target:'device',instanceId,generation,surface,event:{...event,sequence:++appInputSequence}});
     },
     appInterface: ({target='device',instanceId,generation,event}) => apps.request('interface_input',{target,instanceId,generation,event:{...event,sequence:++appInputSequence}}),
+    runPrivate,
     cancelPrivateInput,
     capabilities: () => state?.assistantCapabilities || null,
     appsRequest: (action, args, options) => apps.request(action, args, options),

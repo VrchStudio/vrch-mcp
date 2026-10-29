@@ -273,3 +273,10 @@ is published. No product code or Runtime was changed by this test.
 ## 0.1.5 private-input cancellation
 
 Linux Node22.23.3: real MCP SDK/STDIO and WebSocket cancellation, unsupported-device refusal, blocked ordinary input, and no private data fields pass. Clean package installation exposes the tool with zero production dependencies. Device-side tests exercise actual PTY interruption and privacy restoration separately. macOS device acceptance is not claimed by these Linux checks.
+
+## 0.1.6 Private Input
+
+Real STDIO and WebSocket tests verify capability refusal on older devices,
+device acknowledgement before readiness, blocked ordinary input while private,
+and completion metadata. The device PTY implementation is tested in Viewer Pages;
+this package does not emulate a real device deployment or AI-host reload.

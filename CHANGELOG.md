@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.6
+
+- Run credential prompts through device-confirmed Private Input, with isolated output and no secret argument.
+
 ## 0.1.5
 
 - Let an approved AI cancel private input when requested, without reading or submitting it, and explicitly resume authorized editing.

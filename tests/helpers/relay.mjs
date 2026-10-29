@@ -74,6 +74,7 @@ export async function relay() {
   return {frames,reports,state,bytes:()=>bytes,
     url:`http://127.0.0.1:${server.address().port}/apps/ai?invite=fixture`,
     approve() {send({type:'ai_approved',credential:'fixture-secret',requestId:'fixture-request',leaseExpiresAt:0}); send(state);},
+    send,
     update(values) {Object.assign(state, values); send(state);},
     remove() {send({type:'error',code:'ai_revoked'});},
     async close() {for (const socket of peers) socket.terminate(); await new Promise(resolve => server.close(resolve));}

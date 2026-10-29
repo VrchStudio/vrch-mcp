@@ -1,5 +1,5 @@
 {
-  "version": "0.1.5",
+  "version": "0.1.6",
   "tools": [
     {
       "name": "apps_list",
@@ -715,6 +715,39 @@
       }
     },
     {
+      "name": "terminal_run_private",
+      "description": "Run a command that needs a password or other secret using the device Private Input form. Supply only nonsecret argv; never put a password/token in argv, terminal_input, chat or a file. All command output is suppressed. Wait for device-confirmed waiting_for_private_input before asking the person to enter it in Private Input. Requires the privateCommand capability; fail closed on older devices. The ordinary shell is retained; a finished event includes only exitCode/reason. No credential argument exists.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "argv": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 32
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 10,
+            "maximum": 300,
+            "default": 120
+          }
+        },
+        "required": [
+          "argv"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
       "name": "terminal_cancel_private_input",
       "description": "Only when the person explicitly asks, cancel the current private input without reading or submitting it. Interrupts the waiting command and discards unsubmitted input; submitted input cannot be retracted. Set resumeAI true only when the person also authorizes continuing AI work. Requires an approved connection and the device cancelPrivateInput capability. Inspect state after interruption; never replay blindly.",
       "inputSchema": {
@@ -801,7 +834,7 @@
     },
     {
       "name": "terminal_input",
-      "description": "Send shell input only while the human has granted AI input control. Shared screenshots are included automatically in the response.",
+      "description": "Send nonsecret shell input only while the human has granted AI input control. For commands needing credentials, use terminal_run_private and wait for device-confirmed Private Input. Never send passwords/tokens through this tool. Shared screenshots are included automatically in the response.",
       "inputSchema": {
         "type": "object",
         "properties": {

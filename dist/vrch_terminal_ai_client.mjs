@@ -851,11 +851,14 @@ function createAIClient(invitationURL, { WebSocketImpl = globalThis.WebSocket, e
     control: frame => {if (socket?.readyState !== WebSocketImpl.OPEN) return false; socket.send(JSON.stringify(frame)); return true;}});
   const reports = new Map();
   const privateCancels = new Map();
+  const privateCommands = new Map();
   function interruptReports() {
     for (const job of reports.values()) {clearTimeout(job.timer); job.reject(fileError('connection_interrupted', 'Report was not delivered.'));}
     reports.clear();
     for (const job of privateCancels.values()) {clearTimeout(job.timer); job.reject(fileError("connection_interrupted", "Private input cancellation was not confirmed; inspect state before retrying."));}
     privateCancels.clear();
+    for (const job of privateCommands.values()) {clearTimeout(job.timer); job.reject(fileError('connection_interrupted', 'Private command readiness was not confirmed. Inspect current state before retrying.'));}
+    privateCommands.clear();
   }
   function report(message) {
     if (!(pending || state?.assistantProtocol === 'vrch-ai-assist-v1') || socket?.readyState !== WebSocketImpl.OPEN)
@@ -867,6 +870,21 @@ function createAIClient(invitationURL, { WebSocketImpl = globalThis.WebSocket, e
       const timer = setTimeout(() => {reports.delete(operationId); reject(fileError('connection_interrupted', 'Report was not confirmed.'));}, 10000);
       reports.set(operationId, {resolve, reject, timer});
       socket.send(JSON.stringify({type: 'ai_report', operationId, message}));
+    });
+  }
+  function runPrivate({argv,timeoutSeconds=120}={}) {
+    if (!state?.assistantCapabilities?.privateCommand || socket?.readyState !== WebSocketImpl.OPEN)
+      return Promise.reject(fileError('unsupported_capability', 'Update device Components and Runtime to use Private Input commands.'));
+    if (state.owner !== 'ai' || state.private || state.passwordRequired)
+      return Promise.reject(fileError('control_required', 'AI input control is required before starting a private command.'));
+    if (!Array.isArray(argv) || argv.length < 1 || argv.length > 32 || argv.some(arg=>typeof arg !== 'string' || arg.includes('\0'))
+        || !argv[0] || new TextEncoder().encode(argv.join('')).length > 16384 || !Number.isInteger(timeoutSeconds) || timeoutSeconds < 10 || timeoutSeconds > 300)
+      return Promise.reject(fileError('invalid_private_command', 'Supply nonsecret command arguments and a timeout from 10 to 300 seconds.'));
+    const operationId = sharedFileV2.operationId();
+    return new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>{privateCommands.delete(operationId);reject(fileError('connection_interrupted','Private command readiness was not confirmed. Do not submit credentials outside Private Input.'));},10000);
+      privateCommands.set(operationId,{resolve,reject,timer});
+      socket.send(JSON.stringify({type:'private_command',operationId,epoch:state.epoch,argv,timeoutSeconds}));
     });
   }
   function cancelPrivateInput({resumeAI=false}={}) {
@@ -903,6 +921,20 @@ function createAIClient(invitationURL, { WebSocketImpl = globalThis.WebSocket, e
       let eventData;
       try { eventData = JSON.parse(event.data); } catch { end('invalid_control'); return; }
       if (eventData.type === 'ai_pending') pending = eventData.assistantProtocol === 'vrch-ai-assist-v1';
+      if (eventData.type === 'private_command_result') {
+        const job=privateCommands.get(eventData.operationId);
+        if(job) {
+          clearTimeout(job.timer);privateCommands.delete(eventData.operationId);
+          if(eventData.ok && eventData.private === true && state?.private === true)
+            job.resolve({operationId:eventData.operationId,status:'waiting_for_private_input',private:true});
+          else job.reject(fileError(eventData.code || 'private_not_confirmed','Private Input was not confirmed. Do not enter credentials in the ordinary terminal.'));
+        }
+        return;
+      }
+      if (eventData.type === 'private_command_finished') {
+        const job=privateCommands.get(eventData.operationId);
+        if(job){clearTimeout(job.timer);privateCommands.delete(eventData.operationId);job.reject(fileError('private_command_ended','The command ended before a Private Input prompt was confirmed.'));}
+      }
       if (eventData.type === 'private_cancel_result') {
         const job=privateCancels.get(eventData.operationId);
         if (job) {clearTimeout(job.timer);privateCancels.delete(eventData.operationId);eventData.ok ? job.resolve({canceled:eventData.canceled,owner:eventData.owner}) : job.reject(fileError(eventData.code,'Private input cancellation was not completed.'));}
@@ -971,6 +1003,7 @@ function createAIClient(invitationURL, { WebSocketImpl = globalThis.WebSocket, e
       return apps.request('host_input',{target:'device',instanceId,generation,surface,event:{...event,sequence:++appInputSequence}});
     },
     appInterface: ({target='device',instanceId,generation,event}) => apps.request('interface_input',{target,instanceId,generation,event:{...event,sequence:++appInputSequence}}),
+    runPrivate,
     cancelPrivateInput,
     capabilities: () => state?.assistantCapabilities || null,
     appsRequest: (action, args, options) => apps.request(action, args, options),
@@ -998,7 +1031,7 @@ function createAIClient(invitationURL, { WebSocketImpl = globalThis.WebSocket, e
 }
 
 // Generated from package.json by scripts/build.mjs.
-const VERSION = '0.1.5';
+const VERSION = '0.1.6';
 
 // These hints describe effects; they do not grant device permissions.
 const readOnly = new Set([
@@ -1009,7 +1042,7 @@ const readOnly = new Set([
 const destructive = new Set([
   'apps_publish', 'apps_save', 'apps_import_commit', 'apps_file_commit',
   'apps_exit', 'apps_preview_input', 'apps_control', 'apps_interface_input', 'apps_host_input',
-  'terminal_input'
+  'terminal_input', 'terminal_run_private'
 ]);
 const idempotent = new Set([
   'apps_list', 'apps_state', 'apps_operation_status', 'apps_input_targets',
@@ -1094,11 +1127,12 @@ function createTerminalMCP({ send, createClient = createAIClient, allowHTTPOrigi
   const tools = [
     ...appTools,
     {name: 'ai_report', description: 'Report the current action, result or next step to the person in one or two brief sentences in their language. Works while waiting for Allow AI and after approval; never include raw commands, secrets or internal reasoning.', inputSchema: schema({message: {type: 'string', maxLength: 280}}, ['message'])},
+    {name:'terminal_run_private',description:'Run a command that needs a password or other secret using the device Private Input form. Supply only nonsecret argv; never put a password/token in argv, terminal_input, chat or a file. All command output is suppressed. Wait for device-confirmed waiting_for_private_input before asking the person to enter it in Private Input. Requires the privateCommand capability; fail closed on older devices. The ordinary shell is retained; a finished event includes only exitCode/reason. No credential argument exists.',inputSchema:schema({argv:{type:'array',items:{type:'string'},minItems:1,maxItems:32},timeoutSeconds:{type:'integer',minimum:10,maximum:300,default:120}},['argv'])},
     {name:'terminal_cancel_private_input', description:'Only when the person explicitly asks, cancel the current private input without reading or submitting it. Interrupts the waiting command and discards unsubmitted input; submitted input cannot be retracted. Set resumeAI true only when the person also authorizes continuing AI work. Requires an approved connection and the device cancelPrivateInput capability. Inspect state after interruption; never replay blindly.', inputSchema:schema({resumeAI:{type:'boolean'} })},
     {name: 'ai_capabilities', description: 'Read actual enabled capabilities, targets, control owner and pause state for this approved connection. Unavailable capabilities do not prevent connection.', inputSchema: schema()},
     { name: 'terminal_connect', description: 'Join an invited device Terminal. Wait for the human to approve once. Approval grants terminal observation and on-demand screenshots; Apps invitations grant AI editing on approval; ordinary Terminal invitations require the human to grant input control.', inputSchema: schema({ url: { type: 'string' }, resume: { type: 'boolean' } }, ['url']) },
     { name: 'terminal_events', description: 'Read terminal events and actual images shared by the human automatically. Call terminal_events({}) while waiting for ai_pending/approval and between actions. Omit waitSeconds for the normal 20-second wait; returns early on events. Does not take a screenshot. One complete queued capture batch is returned per call, with separate images for every captured screen.', inputSchema: schema({ waitSeconds: { type: 'number', minimum: 0, maximum: 25, default: 20, description: 'Optional; omit for 20 seconds. Valid range 0..25; returns early when events arrive.' } }) },
-    { name: 'terminal_input', description: 'Send shell input only while the human has granted AI input control. Shared screenshots are included automatically in the response.', inputSchema: schema({ data: { type: 'string' } }, ['data']) },
+    { name: 'terminal_input', description: 'Send nonsecret shell input only while the human has granted AI input control. For commands needing credentials, use terminal_run_private and wait for device-confirmed Private Input. Never send passwords/tokens through this tool. Shared screenshots are included automatically in the response.', inputSchema: schema({ data: { type: 'string' } }, ['data']) },
     { name: 'take_screenshot', description: 'Capture the device screens once and return the complete batch as separate images. Default follows the human Multi-screen setting: on captures all screens, off captures primary only. While on, screen may select primary or a display connector from prior image metadata. Does not change input control.', inputSchema: schema({ screen: { type: 'string', description: 'Optional: all, primary, or a display connector. Omit to follow the human setting.' } }) },
     { name: 'terminal_disconnect', description: 'Disconnect this client. Retain the admitted session credential for resuming within its authorization.', inputSchema: schema() }
   ].map(tool => ({...tool, annotations: toolAnnotations(tool.name)}));
@@ -1138,6 +1172,7 @@ function createTerminalMCP({ send, createClient = createAIClient, allowHTTPOrigi
         if (!client) throw new Error('Connect to an invited Terminal first.');
         if (!admitted && !['ai_report', 'ai_capabilities', 'terminal_events', 'terminal_disconnect'].includes(name)) throw fileError('approval_required', 'Wait for the person to Allow AI before using this tool.');
         if (name === 'ai_report') {reply({content: [text(await client.report(args.message))]}); return;}
+        if (name === 'terminal_run_private') {reply({content:[text(await client.runPrivate(args))]});return;}
         if (name === 'terminal_cancel_private_input') {reply({content:[text(await client.cancelPrivateInput(args))]});return;}
         if (name === 'ai_capabilities') {reply({content: [text(client.capabilities() || 'Waiting for approval.')]}); return;}
         if (name === 'apps_control') {reply({content:[text(await client.appControl(args))]}); return;}
