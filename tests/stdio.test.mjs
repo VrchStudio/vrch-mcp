@@ -51,7 +51,14 @@ for (const entry of ['bin/vrch-mcp.mjs','dist/vrch-mcp.mjs']) test(`official MCP
     assert.deepEqual(await client.listTools(),initial);
     assert.equal(JSON.parse((await call('ai_capabilities')).content[0].text).apps,true);
     assert.equal(JSON.parse((await call('apps_list')).content[0].text).apps[0].id,'fixture-app');
-    await call('apps_launch',{appId:'fixture-app',expectedPackageDigest:'fixture-digest'});
+    device.update({launchCapabilities:true});await call('terminal_events',{waitSeconds:0});
+    const required=await call('apps_launch',{appId:'fixture-app',expectedPackageDigest:'fixture-digest'});
+    assert.equal(required.isError,true);
+    const {manifestDigest,requestedCapabilities}=JSON.parse(required.content[0].text);
+    assert.deepEqual(requestedCapabilities,['websocket:7:json']);assert.equal(manifestDigest,'a'.repeat(64));
+    const denied=await call('apps_launch',{appId:'fixture-app',expectedPackageDigest:'fixture-digest',allow:false,manifestDigest,requestedCapabilities});assert.equal(denied.isError,true);
+    const approved=await call('apps_launch',{appId:'fixture-app',expectedPackageDigest:'fixture-digest',allow:true,manifestDigest,requestedCapabilities});assert.equal(approved.isError,undefined);
+    assert.deepEqual(device.frames.filter(f=>f.action==='launch').at(-1).args,{appId:'fixture-app',expectedPackageDigest:'fixture-digest',allow:true,manifestDigest,requestedCapabilities});
     assert.equal(JSON.parse((await call('apps_state')).content[0].text).running.instanceId,'fixture-instance');
     await call('apps_host_input',{instanceId:'fixture-instance',generation:1,surface:'device',event:{type:'open'}});
     await call('apps_host_input',{instanceId:'fixture-instance',generation:1,surface:'device',event:{type:'click',x:.4,y:.3}});

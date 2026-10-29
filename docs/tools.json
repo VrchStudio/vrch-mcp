@@ -1,5 +1,5 @@
 {
-  "version": "0.1.6",
+  "version": "0.1.7",
   "tools": [
     {
       "name": "apps_list",
@@ -289,7 +289,7 @@
     },
     {
       "name": "apps_launch",
-      "description": "Launch or focus a saved App on the device within this invitation’s enabled Launch/Exit scope. Read apps_state first. Supply replaceInstanceId only after deciding to replace that known target; new real I/O permissions still require the person. Does not save a draft.",
+      "description": "Launch or focus a saved App on the device within this invitation’s enabled Launch/Exit scope. Read apps_state first. Supply replaceInstanceId only after deciding to replace that known target; on capability_required, inspect the returned manifestDigest and requestedCapabilities. Within an authorized App launch task, retry with those exact values and allow:true to grant its declared App communication capabilities. Browser/OS permissions and Allow AI still require the person. Does not save a draft.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -304,6 +304,19 @@
           },
           "operationId": {
             "type": "string"
+          },
+          "allow": {
+            "type": "boolean",
+            "description": "Explicitly grant only the exact capability_required decision returned for this saved App."
+          },
+          "manifestDigest": {
+            "type": "string"
+          },
+          "requestedCapabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [

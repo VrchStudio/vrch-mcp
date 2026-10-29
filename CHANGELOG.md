@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.7
+
+- Let an approved AI authorize an App’s exact requested communication capabilities when launching it.
+
 ## 0.1.6
 
 - Run credential prompts through device-confirmed Private Input, with isolated output and no secret argument.
