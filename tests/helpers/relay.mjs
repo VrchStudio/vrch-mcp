@@ -55,6 +55,10 @@ export async function relay() {
         else if (state.private) error={code:'private_input',message:'Private input is active.'};
         else if (frame.action === 'list') result={apps:[{id:'fixture-app',name:'Fixture'}]};
         else if (frame.action === 'state') result={running};
+        else if (frame.action === 'operation_status' && state.recordOperations) {
+          result = state.operationRecords?.[frame.args.originalOperationId];
+          if (!result || result.action !== frame.args.originalAction) error = {code:'operation_not_found',message:'No operation was found for this actor.'};
+        }
         else if (frame.action === 'launch') {
           const decision={manifestDigest:'a'.repeat(64),requestedCapabilities:['websocket:7:json']};
           if(state.launchCapabilities && (frame.args.allow!==true || frame.args.manifestDigest!==decision.manifestDigest || JSON.stringify(frame.args.requestedCapabilities)!==JSON.stringify(decision.requestedCapabilities)))
@@ -64,6 +68,10 @@ export async function relay() {
         else if (frame.action === 'stop') {running=null; result={running};}
         else if (frame.action === 'input_targets') result={device:{instanceId:'fixture-instance',generation:1}};
         else if (['control_input','interface_input','host_input'].includes(frame.action)) result={dispatched:true,event:frame.args.event};
+        if (state.recordOperations && ['create','open','publish','save','launch'].includes(frame.action)) {
+          state.operationRecords ||= {};
+          state.operationRecords[frame.operationId] = {operationId:frame.operationId,action:frame.action,status:error?'failed':'succeeded',...(error?{error}:{result})};
+        }
         send({type:'apps_result',operationId:frame.operationId,action:frame.action,status:error?'failed':'succeeded',...(error?{error}:{result})});
       }
       if (frame.protocol === 'vrch-file-v2') {
