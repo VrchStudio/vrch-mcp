@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Prepare isolated, encrypted recovery credentials for hosted MCP connections.
+
 ## 0.1.7
 
 - Let an approved AI authorize an App’s exact requested communication capabilities when launching it.
