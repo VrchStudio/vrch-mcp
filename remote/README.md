@@ -45,3 +45,11 @@ OAuth denial/approval, cross-identity refusal, restart and lost-response queries
 Local tests use a real HTTP/SDK/WebSocket boundary with a simulated device; real
 ChatGPT, human decisions, Components/Runtime and physical App results remain
 separate acceptance evidence.
+
+For the authorized standard-SDK validation on SG, set `VRCH_MCP_SDK_VALIDATION=true`.
+This registers a separate public client at `/sdk-client.json` with one exact HTTPS
+callback, `/sdk-callback`. It uses the same PKCE and human device pairing as
+ChatGPT, never ChatGPT's client identity. It does not grant an invitation or
+approve itself. The validation browser receives the authorization code; the
+SDK keeps its verifier and tokens locally. The callback reflects no parameters
+and loads no external resources. Disable the option when this validation ends.

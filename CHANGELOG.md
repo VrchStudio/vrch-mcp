@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Allow standard SDK validation through a separate, explicitly enabled pairing client.
+
 - Add a development Remote MCP service with device-approved pairing and explicit, recoverable connections.
 
 - Prepare isolated, encrypted recovery credentials for hosted MCP connections.

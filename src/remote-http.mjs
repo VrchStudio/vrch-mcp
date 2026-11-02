@@ -5,7 +5,7 @@ const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;',
 const cookies = header => Object.fromEntries(String(header || '').split(';').map(part => part.trim().split('=')));
 const oauthErrors = new Set(['invalid_request', 'invalid_client', 'invalid_redirect_uri', 'invalid_grant', 'invalid_target', 'unsupported_grant_type', 'invalid_token', 'pairing_unavailable', 'invalid_pairing_proof', 'pairing_conflict', 'invalid_browser_session']);
 
-export function createRemoteHTTPHandler({auth, resource, handleMCP, pairingDevices = []}) {
+export function createRemoteHTTPHandler({auth, resource, handleMCP, pairingDevices = [], sdkValidation = false}) {
   const target = new URL(resource), origin = target.origin, metadata = auth.metadata();
   if (typeof handleMCP !== 'function' || new URL(metadata.issuer).origin !== origin) throw Error('Invalid remote HTTP configuration.');
   const protectedPath = '/.well-known/oauth-protected-resource' + (target.pathname === '/' ? '' : target.pathname);
@@ -38,6 +38,15 @@ export function createRemoteHTTPHandler({auth, resource, handleMCP, pairingDevic
         send(response, 403, {error: 'forbidden'}); return;
       }
       const url = new URL(request.url, origin), path = url.pathname;
+      if (sdkValidation && request.method === 'GET' && path === '/sdk-client.json') {
+        send(response, 200, {client_id: origin + '/sdk-client.json', client_name: 'VRCH SDK validation',
+          redirect_uris: [origin + '/sdk-callback'], token_endpoint_auth_method: 'none',
+          grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'], scope: 'vrch:mcp'}); return;
+      }
+      if (sdkValidation && request.method === 'GET' && path === '/sdk-callback') {
+        send(response, 200, '<!doctype html><meta charset="utf-8"><title>VRCH SDK validation</title><p>Return to the SDK validation task.</p>',
+          {'Content-Security-Policy': "default-src 'none'; base-uri 'none'; frame-ancestors 'none'"}); return;
+      }
       if (request.method === 'GET' && path === protectedPath) {
         send(response, 200, {resource, authorization_servers: [metadata.issuer], scopes_supported: ['vrch:mcp'], bearer_methods_supported: ['header']}); return;
       }

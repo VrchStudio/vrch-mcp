@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {createServer, request} from 'node:http';
 import {createHash, randomBytes, generateKeyPairSync, sign, verify} from 'node:crypto';
+import {auth as sdkAuthorize} from '@modelcontextprotocol/sdk/client/auth.js';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import {WebSocket} from 'ws';
@@ -19,6 +20,7 @@ test('real HTTP OAuth pairing and official SDK Streamable HTTP use the shared MC
   const issuer = 'https://mcp-sg.example', resource = issuer + '/mcp', clientId = 'https://chatgpt.com/oauth/client.json';
   const redirectUri = 'https://chatgpt.com/connector_platform_oauth_redirect', keys = generateKeyPairSync('ed25519');
   const clients = new Map([[clientId, {tokenEndpointAuthMethod: 'none', redirectUris: [redirectUri]}]]);
+  clients.set(issuer + '/sdk-client.json', {tokenEndpointAuthMethod: 'none', redirectUris: [issuer + '/sdk-callback']});
   const auth = createPairingAuthorization({filename: ':memory:', issuer, resource, clients, verifyPairing: async (expected, proof) => {
     if (proof.deviceId !== 'fixture-130' || !verify(null, Buffer.from(JSON.stringify(expected)), keys.publicKey, Buffer.from(proof.signature, 'base64url')))
       throw Object.assign(Error('invalid_pairing_proof'), {code: 'invalid_pairing_proof'});
@@ -33,7 +35,7 @@ test('real HTTP OAuth pairing and official SDK Streamable HTTP use the shared MC
       return {deviceId: 'fixture-130', origin: 'https://registered.example', WebSocketImpl: DeviceSocket};
     }});
   let dispatched = 0;
-  const handler = createRemoteHTTPHandler({auth, resource, handleMCP: async (identity, message) => {
+  const handler = createRemoteHTTPHandler({auth, resource, sdkValidation: true, handleMCP: async (identity, message) => {
     assert.equal(identity.oauthClientId, clientId); assert.equal(identity.resource, resource); dispatched++;
     return router.handle(identity, message);
   }});
@@ -50,6 +52,34 @@ test('real HTTP OAuth pairing and official SDK Streamable HTTP use the shared MC
   try {
     assert.equal((await call('/mcp', json({jsonrpc: '2.0', id: 1, method: 'tools/list'}))).status, 401);
     assert.equal(dispatched, 0);
+    const sdkMetadata = (await call('/sdk-client.json')).json();
+    assert.deepEqual(sdkMetadata.redirect_uris, [issuer + '/sdk-callback']);
+    assert(!(await call('/sdk-callback?code=never-reflect-this')).text.includes('never-reflect-this'));
+    let sdkTokens, sdkVerifier, authorizationURL;
+    const provider = {redirectUrl: issuer + '/sdk-callback', clientMetadata: sdkMetadata,
+      clientInformation: () => ({client_id: issuer + '/sdk-client.json', issuer}),
+      tokens: () => sdkTokens, saveTokens: value => {sdkTokens = value;},
+      saveCodeVerifier: value => {sdkVerifier = value;}, codeVerifier: () => sdkVerifier,
+      state: () => 'sdk-session-state', redirectToAuthorization: url => {authorizationURL = url;}};
+    const fetchSDK = async (input, init = {}) => {
+      const url = new URL(input); assert.equal(url.origin, issuer);
+      const value = await call(url.pathname + url.search, {method: init.method, headers: Object.fromEntries(new Headers(init.headers)), value: init.body?.toString() || ''});
+      return new Response(value.text || null, {status: value.status, headers: value.headers});
+    };
+    assert.equal(await sdkAuthorize(provider, {serverUrl: resource, fetchFn: fetchSDK}), 'REDIRECT');
+    const sdkStart = await call(authorizationURL.pathname + authorizationURL.search);
+    const sdkPair = sdkStart.headers.location, sdkCookie = sdkStart.headers['set-cookie'][0].split(';')[0];
+    const sdkChallenge = (await call(sdkPair + '/challenge')).json();
+    assert.equal(sdkChallenge.clientId, issuer + '/sdk-client.json');
+    await call(sdkPair + '/approve', json({deviceId: 'fixture-130', signature: sign(null, Buffer.from(JSON.stringify({...sdkChallenge, decision: 'approve'})), keys.privateKey).toString('base64url')}));
+    const sdkFinish = (await call(sdkPair + '/status', {method: 'POST', headers: {Cookie: sdkCookie, Origin: issuer}})).json();
+    const sdkCallback = new URL(sdkFinish.redirect);
+    assert.equal(sdkCallback.searchParams.get('state'), 'sdk-session-state');
+    assert.equal(sdkCallback.searchParams.get('iss'), issuer);
+    assert.equal(await sdkAuthorize(provider, {serverUrl: resource, authorizationCode: sdkCallback.searchParams.get('code'), fetchFn: fetchSDK}), 'AUTHORIZED');
+    assert(sdkTokens.access_token && sdkTokens.refresh_token);
+    assert.equal(auth.authenticate(sdkTokens.access_token).oauthClientId, issuer + '/sdk-client.json');
+
     const discover = await call('/.well-known/oauth-protected-resource/mcp');
     assert.equal(discover.json().authorization_servers[0], issuer);
     assert.equal((await call('/.well-known/oauth-authorization-server')).json().code_challenge_methods_supported[0], 'S256');
