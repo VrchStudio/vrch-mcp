@@ -457,8 +457,9 @@ class NativeFileV2 {
     return this.run(this.core.upload(source, {purpose, resource, operationId,
       maxBytes: this.state().filePurposes.find(item => item.purpose === purpose).maxBytes}));
   }
-  async download(path, {purpose = 'app-package', resource, operationId} = {}) {
+  async download(path, {purpose = 'app-package', resource, operationId, maxBytes = 128 * 1024 * 1024} = {}) {
     this.available(purpose, 'download');
+    if (!Number.isSafeInteger(maxBytes) || maxBytes < 0 || maxBytes > 128 * 1024 * 1024) throw fileError('invalid_file_limit', 'Invalid download size limit.');
     if (typeof path !== 'string' || !path) throw fileError('invalid_file', 'Provide a destination path.');
     path = path.startsWith('~/') ? join(homedir(), path.slice(2)) : path;
     try {await lstat(path); throw fileError('file_exists', 'The destination already exists. Choose a new path.');}
@@ -471,7 +472,7 @@ class NativeFileV2 {
       async write(bytes) {let offset = 0; while (offset < bytes.length) {const {bytesWritten} = await handle.write(bytes, offset, bytes.length - offset, size + offset); if (!bytesWritten) throw fileError('file_io_error', 'The destination could not be written.'); offset += bytesWritten;} size += bytes.length;},
       hash: signal => hashFile(handle, size, () => !signal?.aborted), value: () => path,
       clear() {size = 0;}};
-    return this.run(this.core.download({purpose, resource, operationId, sink}));
+    return this.run(this.core.download({purpose, resource, operationId, sink, maxBytes}));
   }
   async run(promise) {
     const result = await promise;

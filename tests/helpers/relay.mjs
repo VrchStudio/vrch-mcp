@@ -51,10 +51,22 @@ export async function relay() {
       if (frame.type === 'ai_report') {reports.push(frame.message); send({type:'ai_report_result',operationId:frame.operationId,ok:true});}
       if (frame.type === 'apps_request') {
         let result = {}, error;
-        if (state.owner !== 'ai' && !['list','state','input_targets'].includes(frame.action)) error={code:'control_required',message:'The person has control.'};
+        if (state.owner !== 'ai' && !['list','state','input_targets','file_export'].includes(frame.action)) error={code:'control_required',message:'The person has control.'};
         else if (state.private) error={code:'private_input',message:'Private input is active.'};
         else if (frame.action === 'list') result={apps:[{id:'fixture-app',name:'Fixture'}]};
         else if (frame.action === 'state') result={running};
+        else if (frame.action === 'file_export' && state.workspaceFiles) {
+          const source = state.workspaceFiles[frame.args.path];
+          if (frame.workspaceId !== state.workspaceId) error = {code:'workspace_conflict',message:'Wrong workspace.'};
+          else if (!source) error = {code:'file_not_found',message:'Missing file.'};
+          else {bytes = Buffer.from(source); result={reference:'fixture-reference',size:bytes.length,sha256:digest(bytes)};}
+        }
+        else if (frame.action === 'file_commit' && state.workspaceFiles) {
+          const current = state.workspaceFiles[frame.args.path], expected = current ? digest(current) : null;
+          if (frame.workspaceId !== state.workspaceId) error = {code:'workspace_conflict',message:'Wrong workspace.'};
+          else if (frame.args.expectedSha256 !== expected) error = {code:'file_conflict',message:'The file changed.'};
+          else {state.workspaceFiles[frame.args.path]=Buffer.from(bytes); result={committed:true,path:frame.args.path,sha256:digest(bytes),published:false};}
+        }
         else if (frame.action === 'operation_status' && state.recordOperations) {
           result = state.operationRecords?.[frame.args.originalOperationId];
           if (!result || result.action !== frame.args.originalAction) error = {code:'operation_not_found',message:'No operation was found for this actor.'};
@@ -68,7 +80,7 @@ export async function relay() {
         else if (frame.action === 'stop') {running=null; result={running};}
         else if (frame.action === 'input_targets') result={device:{instanceId:'fixture-instance',generation:1}};
         else if (['control_input','interface_input','host_input'].includes(frame.action)) result={dispatched:true,event:frame.args.event};
-        if (state.recordOperations && ['create','open','publish','save','launch'].includes(frame.action)) {
+        if (state.recordOperations && ['create','open','publish','save','launch','file_commit'].includes(frame.action)) {
           state.operationRecords ||= {};
           state.operationRecords[frame.operationId] = {operationId:frame.operationId,action:frame.action,status:error?'failed':'succeeded',...(error?{error}:{result})};
         }
@@ -80,7 +92,10 @@ export async function relay() {
           if (frame.direction === 'upload') bytes=Buffer.alloc(0);
           file('file_ready',{size:frame.direction==='upload'?frame.size:bytes.length,sha256:frame.direction==='upload'?frame.sha256:digest(bytes),offset:0,prefixSha256:digest(Buffer.alloc(0)),name:'fixture.bin'});
           if (frame.direction === 'download') download();
-        } else if (frame.type === 'file_finish') file('file_done',{sha256:digest(bytes),reference:'fixture-reference'});
+        } else if (frame.type === 'file_finish') {
+          file('file_done',{sha256:digest(bytes),reference:'fixture-reference'});
+          if (state.privateAfterDownload && transfer.direction === 'download') state.private = true;
+        }
       }
     });
   });
@@ -89,6 +104,7 @@ export async function relay() {
     approve() {send({type:'ai_approved',credential:'fixture-secret',requestId:'fixture-request',leaseExpiresAt:0}); send(state);},
     send,
     update(values) {Object.assign(state, values); send(state);},
+    output(value) {const data=Buffer.from(value); send({type:'ready',streamId:'fixture-stream',outputStart:0}); send({type:'output',streamId:'fixture-stream',offset:0,length:data.length}); for (const peer of peers) peer.send(data);},
     remove() {send({type:'error',code:'ai_revoked'});},
     async close() {for (const socket of peers) socket.terminate(); await new Promise(resolve => server.close(resolve));}
   };

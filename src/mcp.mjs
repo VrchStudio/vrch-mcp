@@ -65,7 +65,7 @@ export function createTerminalMCP({ send, createClient = createAIClient, allowHT
     {name: 'apps_file_export', description: 'Create a fixed download snapshot of a relative file in the current App workspace. Returns its reference and sha256; use file_download with app-workspace. Does not change preview or save the App.', inputSchema: schema({workspaceId:{type:'string'},path:{type:'string'}}, ['workspaceId','path'])},
     {name: 'apps_file_commit', description: 'Atomically deliver a completed app-workspace upload to a relative workspace path. Omit expectedSha256 only for a new file; supply the existing file sha256 to replace it. Does not publish, save or execute the file.', inputSchema: schema({workspaceId:{type:'string'},reference:{type:'string'},path:{type:'string'},expectedSha256:{type:['string','null']}}, ['workspaceId','reference','path'])},
     {name: 'file_upload', description: 'Upload a local regular file through the shared resumable file transport. App packages must use .vrchapp and remain private until inspect/commit.', inputSchema: schema({path: {type: 'string'}, purpose: {type: 'string', enum: ['app-package', 'app-workspace', 'boot-image']}, workspaceId:{type:'string'}, operationId: {type: 'string'}}, ['path', 'purpose'])},
-    {name: 'file_download', description: 'Download an authorized fixed App package reference to a new local path, verifying all bytes before an atomic no-overwrite commit.', inputSchema: schema({path: {type: 'string'}, purpose:{type:'string',enum:['app-package','app-workspace']}, reference: {type: 'string'}, operationId: {type: 'string'}}, ['path', 'reference'])},
+    {name: 'file_download', description: 'Download an authorized fixed App package reference to a new local path, verifying all bytes before an atomic no-overwrite commit.', inputSchema: schema({path: {type: 'string'}, maxBytes: {type: 'integer', minimum: 0, maximum: 134217728}, purpose:{type:'string',enum:['app-package','app-workspace']}, reference: {type: 'string'}, operationId: {type: 'string'}}, ['path', 'reference'])},
     ...['pause', 'resume', 'cancel'].map(action => ({name: 'file_' + action, description: action[0].toUpperCase() + action.slice(1) + ' the current shared file transfer.', inputSchema: schema()}))
   ];
   const tools = [
@@ -130,7 +130,7 @@ export function createTerminalMCP({ send, createClient = createAIClient, allowHT
         if (name.startsWith('file_')) {
           let result;
           if (name === 'file_upload') result = await client.uploadFile(args.path, {purpose: args.purpose, resource: args.workspaceId ? {workspaceId:args.workspaceId} : {}, operationId: args.operationId});
-          else if (name === 'file_download') result = await client.downloadFile(args.path, {purpose: args.purpose || 'app-package', resource: {reference: args.reference}, operationId: args.operationId});
+          else if (name === 'file_download') result = await client.downloadFile(args.path, {purpose: args.purpose || 'app-package', resource: {reference: args.reference}, operationId: args.operationId, maxBytes: args.maxBytes});
           else if (name === 'file_resume') result = await client.resumeTransfer();
           else if (name === 'file_cancel') result = await client.cancelTransfer();
           else {client.pauseTransfer(); result = {paused: true};}

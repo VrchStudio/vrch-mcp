@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {randomBytes, randomUUID} from 'node:crypto';
-import {mkdtempSync, rmSync, readFileSync} from 'node:fs';
+import {randomBytes, randomUUID, createHash} from 'node:crypto';
+import {mkdtempSync, rmSync, readFileSync, readdirSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {WebSocket} from 'ws';
@@ -11,21 +11,22 @@ const [major, minor] = process.versions.node.split('.').map(Number);
 const supported = major > 22 || major === 22 && minor >= 13;
 const {createRemoteRouter} = supported ? await import('../src/remote-router.mjs') : {};
 const identity = {issuer: 'https://mcp.example', principal: 'paired-identity', oauthClientId: 'chatgpt-client'};
-async function fixture({delayPublish = false, waitMs = 1000, ...timers} = {}) {
+async function fixture({delayPublish = false, delayCommit = false, waitMs = 1000, ...timers} = {}) {
   const remote = await relay(), directory = mkdtempSync(join(tmpdir(), 'vrch-remote-router-'));
   remote.state.recordOperations = true;
   const remoteOrigin = new URL(remote.url).origin.replace(/^http/, 'ws');
   class DeviceSocket extends WebSocket {constructor(url) {assert.equal(new URL(url).origin, 'wss://registered.example'); super(remoteOrigin + new URL(url).pathname);}}
   const filename = join(directory, 'connections.sqlite'), key = randomBytes(32);
+  const emitted = [];
   const options = {filename, credentialDirectory: join(directory, 'credentials'), encryptionKey: key, waitMs, ...timers,
     resolveRegisteredTarget: async url => {
       if (new URL(url).origin !== 'https://registered.example') throw Object.assign(Error('target_unavailable'), {code: 'target_unavailable'});
       return {origin: 'https://registered.example', deviceId: 'registered-130', WebSocketImpl: DeviceSocket};
     }, createClient: (url, args) => {
-      const client = createAIClient(url, args), request = client.appsRequest;
+      const client = createAIClient(url, {...args, emit: event => {emitted.push(event); args.emit(event);}}), request = client.appsRequest;
       client.appsRequest = async (...values) => {
         const result = await request(...values);
-        if (delayPublish && values[0] === 'publish') await new Promise(resolve => setTimeout(resolve, 100));
+        if (delayPublish && values[0] === 'publish' || delayCommit && values[0] === 'file_commit') await new Promise(resolve => setTimeout(resolve, 100));
         return result;
       }; return client;
     }};
@@ -43,7 +44,7 @@ async function fixture({delayPublish = false, waitMs = 1000, ...timers} = {}) {
     assert.equal((await call('ai_capabilities', {connectionRef: reference})).structuredContent.phase, 'ready');
     return {reference, attemptId, url};
   }
-  return {remote, options, filename, directory, call, connect, get router() {return router;},
+  return {remote, options, filename, directory, emitted, call, connect, get router() {return router;},
     async restart() {router.close(); router = await createRemoteRouter(options);},
     async close() {router.close(); await remote.close(); rmSync(directory, {recursive: true, force: true});}};
 }
@@ -56,6 +57,13 @@ test('explicit remote references isolate identities and clients, keep attempt re
     assert(tools.find(tool => tool.name === 'apps_save').inputSchema.required.includes('operationId'));
     assert(tools.find(tool => tool.name === 'apps_state').inputSchema.required.includes('connectionRef'));
     assert(!tools.some(tool => tool.name === 'file_upload'), 'Local filesystem paths are not exposed by this hosted slice.');
+    for (const name of ['terminal_input', 'terminal_run_private', 'terminal_cancel_private_input']) {
+      assert(!tools.some(tool => tool.name === name));
+      assert.equal((await f.call(name, {connectionRef: reference, data: 'pwd\n'})).structuredContent.code, 'unsupported_tool');
+    }
+    f.remote.output('private-terminal-history-fixture');
+    await until(() => f.emitted.some(event => event.type === 'data' && event.data.includes('private-terminal-history-fixture')));
+    assert(!JSON.stringify(await f.call('terminal_events', {connectionRef: reference, waitSeconds: 0})).includes('private-terminal-history-fixture'));
     const repeated = await f.call('terminal_connect', {url, attemptId});
     assert.equal(repeated.structuredContent.connectionRef, reference);
     assert.equal(f.remote.frames.filter(frame => frame.type === 'ai_join').length, 1);
@@ -158,5 +166,72 @@ test('idle cleanup waits for an in-flight edit and keeps its durable result for 
     const status = await f.call('apps_operation_status', {connectionRef: reference, originalOperationId: operationId, originalAction: 'publish'});
     assert.equal(status.structuredContent.phase, 'succeeded');
     assert.equal(f.remote.frames.filter(frame => frame.action === 'publish').length, 1);
+  } finally {await f.close();}
+});
+
+
+const fileSHA = value => createHash('sha256').update(value).digest('hex');
+test('hosted text editing uses real File V2, atomic workspace commit and conflict-safe operation IDs without a shell', {skip: !supported}, async () => {
+  const f = await fixture(), workspaceId = randomUUID(), initial = '\ufeff<h1>节拍器</h1>\n';
+  f.remote.state.workspaceId = workspaceId; f.remote.state.workspaceFiles = {'index.html': Buffer.from(initial)};
+  try {
+    const {reference} = await f.connect(), base = {connectionRef: reference, workspaceId, path:'index.html'};
+    const read = await f.call('apps_read_text', base);
+    assert.equal(read.structuredContent.phase, 'succeeded'); assert.equal(read.content[1].text, initial);
+    assert.equal(read.structuredContent.result.sha256, fileSHA(initial));
+    const operationId = randomUUID(), next = '<h1>Updated</h1>\n';
+    const write = {...base, operationId, expectedSha256:fileSHA(initial), content:next};
+    assert.equal((await f.call('apps_write_text', write)).structuredContent.phase, 'succeeded');
+    assert.equal(f.remote.state.workspaceFiles['index.html'].toString(), next);
+    assert.equal((await f.call('apps_write_text', write)).structuredContent.phase, 'succeeded');
+    assert.equal(f.remote.frames.filter(value=>value.action==='file_commit').length, 1);
+    assert.equal((await f.call('apps_write_text', {...write, content:'changed intent'})).structuredContent.code, 'operation_conflict');
+    assert.equal((await f.call('apps_write_text', {...write, operationId:randomUUID()})).structuredContent.code, 'file_conflict');
+    assert.equal(f.remote.state.workspaceFiles['index.html'].toString(), next);
+    assert.equal((await f.call('apps_write_text', {...base, path:'new.js', operationId:randomUUID(), expectedSha256:null, content:''})).structuredContent.phase, 'succeeded');
+    assert.equal((await f.call('apps_read_text', {...base, path:'new.js'})).content[1].text, '');
+    assert(!f.remote.frames.some(value=>value.type==='input'||['publish','save','launch'].includes(value.action)));
+    assert.deepEqual(readdirSync(join(f.directory,'workspace-transfers')), []);
+    assert(!readFileSync(f.filename).includes(Buffer.from(next)));
+    assert(!JSON.stringify(read).includes(f.directory));
+  } finally {await f.close();}
+});
+
+test('text tools reject wrong workspace/path/size and withhold downloaded source when payload access is removed', {skip: !supported}, async () => {
+  const f = await fixture(), workspaceId = randomUUID();
+  f.remote.state.workspaceId = workspaceId; f.remote.state.workspaceFiles = {'secret.txt':Buffer.from('retained-private-source'),'big.txt':Buffer.alloc(65537)};
+  try {
+    const {reference} = await f.connect(), base={connectionRef:reference,workspaceId,path:'secret.txt'};
+    for (const path of ['/etc/passwd','../outside','a/../b','a//b','a\\b','a\0b'])
+      assert.equal((await f.call('apps_read_text',{...base,path})).structuredContent.code,'invalid_workspace_path');
+    assert.equal((await f.call('apps_read_text',{...base,workspaceId:randomUUID()})).structuredContent.code,'workspace_conflict');
+    assert.equal((await f.call('apps_read_text',{...base,path:'big.txt'})).structuredContent.code,'workspace_text_too_large');
+    assert.equal((await f.call('apps_write_text',{...base,operationId:randomUUID(),expectedSha256:null,content:'x'.repeat(65537)})).structuredContent.code,'invalid_workspace_text');
+    f.remote.state.privateAfterDownload = true;
+    const withheld = await f.call('apps_read_text',base);
+    assert.equal(withheld.structuredContent.code,'private_input');
+    assert(!JSON.stringify(withheld).includes('retained-private-source'));
+    assert.deepEqual(readdirSync(join(f.directory,'workspace-transfers')),[]);
+  } finally {await f.close();}
+});
+
+test('a lost text commit response is queried after restart without uploading or committing again', {skip: !supported}, async () => {
+  const f = await fixture({delayCommit:true,waitMs:5}), workspaceId=randomUUID();
+  f.remote.state.workspaceId=workspaceId;f.remote.state.workspaceFiles={};
+  try {
+    const {reference}=await f.connect(), operationId=randomUUID(), args={connectionRef:reference,workspaceId,path:'index.html',expectedSha256:null,content:'<h1>Retained</h1>',operationId};
+    assert.equal((await f.call('apps_write_text',args)).structuredContent.phase,'pending');
+    await until(()=>f.remote.frames.some(value=>value.action==='file_commit'));
+    await f.restart();
+    await f.call('terminal_connect',{connectionRef:reference,resume:true});
+    for(let i=0;i<100;i++){if((await f.call('terminal_events',{connectionRef:reference,waitSeconds:0})).structuredContent.phase==='ready')break;await new Promise(resolve=>setTimeout(resolve,10));}
+    assert.equal((await f.call('apps_write_text',args)).structuredContent.phase,'outcome_unknown');
+    const status=await f.call('apps_operation_status',{connectionRef:reference,originalOperationId:operationId,originalAction:'write_text'});
+    assert.equal(status.structuredContent.phase,'succeeded');
+    assert.equal(status.structuredContent.result.result.sha256,fileSHA(args.content));
+    assert.equal(f.remote.frames.filter(value=>value.action==='file_commit').length,1);
+    assert.equal(f.remote.frames.filter(value=>value.type==='file_begin'&&value.direction==='upload').length,1);
+    assert.equal(f.remote.state.workspaceFiles['index.html'].toString(),args.content);
+    await new Promise(resolve=>setTimeout(resolve,110));
   } finally {await f.close();}
 });

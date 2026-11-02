@@ -3,7 +3,8 @@
 import {DatabaseSync} from 'node:sqlite';
 import {createHash, randomBytes, randomUUID} from 'node:crypto';
 import {lstatSync, chmodSync} from 'node:fs';
-import {dirname} from 'node:path';
+import {dirname, join} from 'node:path';
+import {createWorkspaceText, validateWorkspaceText, workspaceTextTools} from './remote-workspace-text.mjs';
 import {createAIClient} from './client.mjs';
 import {createTerminalMCP} from './mcp.mjs';
 import {createRemoteCredentialStore} from './remote-credentials.mjs';
@@ -11,7 +12,8 @@ const uuid = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-
 const fail = code => Object.assign(Error(code), {code});
 const canonical = value => JSON.stringify(value, (_key, child) => child && !Array.isArray(child) && typeof child === 'object' ? Object.fromEntries(Object.keys(child).sort().map(key => [key, child[key]])) : child);
 const digest = value => createHash('sha256').update(value).digest('hex');
-const durable = new Set(['apps_create', 'apps_open', 'apps_publish', 'apps_save', 'apps_import_inspect', 'apps_import_commit', 'apps_file_commit', 'apps_launch']);
+const durable = new Set(['apps_create', 'apps_open', 'apps_publish', 'apps_save', 'apps_import_inspect', 'apps_import_commit', 'apps_file_commit', 'apps_launch', 'apps_write_text']);
+const hostedExcluded = new Set(['terminal_input', 'terminal_run_private', 'terminal_cancel_private_input']);
 const content = value => [{type: 'text', text: JSON.stringify(value)}];
 
 export async function createRemoteRouter({filename, credentialDirectory, encryptionKey, resolveRegisteredTarget, createClient = createAIClient, waitMs = 20000, pendingWaitMs = 600000, resultDrainMs = 45000, idleMs = 1800000}) {
@@ -30,6 +32,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
     UPDATE operations SET phase='outcome_unknown' WHERE phase='pending';`);
   if ([pendingWaitMs, resultDrainMs, idleMs].some(value => !Number.isSafeInteger(value) || value < 1)) throw fail('invalid_configuration');
   const active = new Map(), attaching = new Map();
+  const workspaceText = createWorkspaceText(join(dirname(filename), 'workspace-transfers'));
   let closed = false;
   const owner = identity => {
     const values = ['issuer', 'principal', 'oauthClientId'].map(key => identity?.[key]);
@@ -103,7 +106,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
     entry.bridge = createTerminalMCP({toolCatalog: 'stable', send: message => {
       if (pending.has(message.id)) {pending.get(message.id)(message.result); pending.delete(message.id);}
     }, createClient: (address, options) => createClient(address, {...options, WebSocketImpl: target.WebSocketImpl, credentialStore, autoReconnect: false,
-      emit: event => {try {observe(record.id, event); options.emit(event);} catch {queueMicrotask(() => entry.shutdown());}}})});
+      emit: event => {try {observe(record.id, event); if (event.type !== 'data') options.emit(event);} catch {queueMicrotask(() => entry.shutdown());}}})});
     entry.shutdown = () => {clearTimeout(entry.pendingTimer); clearTimeout(entry.idleTimer); entry.bridge.close();};
     entry.call = async (method, params) => {
       entry.requests++;
@@ -122,8 +125,8 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
   await catalogBridge.receive({jsonrpc: '2.0', id: 1, method: 'initialize'});
   await catalogBridge.receive({jsonrpc: '2.0', id: 2, method: 'tools/list'});
   const initialize = {...replies[0].result, serverInfo: {name: 'vrch-mcp-remote', version: '0.1.7-remote-dev'}};
-  initialize.instructions += '\nHosted tools always require the explicit connectionRef. The terminal runs on the device, not in the browser. Device screenshots are not web Preview screenshots; apps_state reports the Preview runtime errors. Hosted file staging is not available in this slice; never treat local file paths as uploadable. Pairing does not replace the human Invite AI and Allow AI decisions.';
-  const catalog = replies[1].result.tools.filter(tool => !tool.name.startsWith('file_')).map(original => {
+  initialize.instructions += '\nHosted tools always require the explicit connectionRef. Hosted App tools do not expose shell input or terminal transcripts. The existing device grant remains broader than a project sandbox; this tool filter does not create project-only authorization. Device screenshots are not web Preview screenshots; apps_state reports the Preview runtime errors. Use apps_read_text/apps_write_text for bounded UTF-8 source edits in the current workspace. Hosted general file staging is not available; never treat local file paths as uploadable. Pairing does not replace the human Invite AI and Allow AI decisions.';
+  const catalog = [...replies[1].result.tools.filter(tool => !tool.name.startsWith('file_') && !hostedExcluded.has(tool.name)), ...workspaceTextTools].map(original => {
     const tool = structuredClone(original);
     tool.outputSchema = {type: 'object', properties: {connectionRef: {type: 'string'}, phase: {type: 'string'}, retryable: {type: 'boolean'}}, required: ['phase', 'retryable'], additionalProperties: true};
     if (tool.name === 'terminal_connect') {
@@ -184,13 +187,22 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
     if (!['terminal_events', 'ai_report', 'ai_capabilities'].includes(name) && record.phase !== 'ready') throw fail('approval_required');
     const {connectionRef, ...values} = args;
     if (name === 'terminal_events' && (typeof (values.waitSeconds ?? 20) !== 'number' || !Number.isFinite(values.waitSeconds ?? 20) || (values.waitSeconds ?? 20) < 0 || (values.waitSeconds ?? 20) > 20)) throw fail('invalid_wait');
-    const invoke = () => entry.call('tools/call', {name, arguments: values});
+    const isText = name === 'apps_read_text' || name === 'apps_write_text';
+    if (isText) validateWorkspaceText(name, values);
+    const invoke = async () => {
+      if (!isText) return entry.call('tools/call', {name, arguments: values});
+      entry.requests++;
+      try {return await workspaceText.run(connectionRef, name, values, (tool, input) => entry.call('tools/call', {name: tool, arguments: input}));}
+      catch (error) {return {isError: true, content: [{type: 'text', text: (error.code || 'workspace_transfer_failed') + ': Workspace transfer did not complete.'}]};}
+      finally {entry.requests--;}
+    };
     if (name === 'apps_operation_status') {
       if (!uuid(values.originalOperationId) || typeof values.originalAction !== 'string') throw fail('invalid_operation_query');
       const previous = db.prepare('SELECT * FROM operations WHERE connection=? AND id=?').get(connectionRef, values.originalOperationId);
       if (previous && previous.action.slice(5) !== values.originalAction) throw fail('operation_conflict');
       if (previous && ['succeeded', 'failed'].includes(previous.phase)) return envelopes(JSON.parse(previous.result));
-      const response = await bounded(invoke(), null), queried = response && business(response);
+      const query = values.originalAction === 'write_text' ? () => entry.call('tools/call', {name, arguments: {...values, originalAction: 'file_commit'}}) : invoke;
+      const response = await bounded(query(), null), queried = response && business(response);
       const terminal = queried?.result?.status;
       const value = {connectionRef, operationId: values.originalOperationId, retryable: false,
         phase: terminal === 'succeeded' ? 'succeeded' : ['failed', 'canceled'].includes(terminal) ? 'failed'

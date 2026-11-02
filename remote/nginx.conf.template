@@ -5,7 +5,7 @@ server {
     listen 127.0.0.1:18917;
     server_name MCP_HOST;
     access_log off;
-    client_max_body_size 64k;
+    client_max_body_size 256k;
     location / {
         limit_req zone=vrch_mcp_auth burst=30 nodelay;
         limit_req_status 429;

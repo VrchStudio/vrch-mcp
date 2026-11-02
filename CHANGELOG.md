@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Edit App source from web AI with conflict checks and recoverable writes, without shell tools.
+
 - Accept Claude web pairing through its published OAuth identity.
 
 - Allow standard SDK validation through a separate, explicitly enabled pairing client.

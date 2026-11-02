@@ -8,7 +8,22 @@ Use Node 22.23.4 and `npm ci --prefix remote --omit=dev --ignore-scripts`.
 The hosted-only `ws` dependency pins a public DNS result into the TLS connection,
 while retaining the registered device hostname for certificate verification.
 The common MCP/client code stays in `src/`. Hosted file staging is not implemented;
-file tools are omitted. Device screenshots do not capture the browser Preview.
+general `file_*` tools are omitted. The hosted App catalog supplies `apps_read_text`
+and `apps_write_text` for UTF-8 source files up to 64 KiB. It omits shell input,
+private command tools and terminal transcripts; this is not an OS sandbox or a
+project-only device grant. Device screenshots do not capture the browser Preview.
+
+Read a file with explicit `connectionRef`, `workspaceId` and relative `path`.
+The source is the second text block; the first block/structured result contains
+its verified SHA-256 and size. Write with that SHA as `expectedSha256` (null only
+for a new file), `content` and a fresh `operationId`. Each file uses existing File
+V2 transfer plus atomic workspace commit. There is no whole-project transaction:
+read `apps_state` for the new draftRevision before publishing/saving. An uncertain
+write is queried with the original ID and `originalAction: "write_text"`, never
+replayed under a new ID. Read access is checked on the device again after download.
+Temporary payloads are private, bounded, removed after the call and cleared on
+restart; they are not a user-facing staging/download service or draft storage.
+These text tools do not publish, save or run an App implicitly.
 
 Build from a clean, pushed commit with:
 
@@ -59,4 +74,5 @@ in `remote/clients.mjs`. Only their exact hosted callbacks are enabled; native
 Claude Code callbacks are outside this slice. A failed metadata fetch disables
 that client's new authorization on this process start, without trusting an
 unverified document or preventing the other verified client from starting.
-Actual Claude account connection and App editing remain separate acceptance.
+A human has completed the Claude web OAuth connection on SG. Device Invite/Allow AI,
+App editing and hardware acceptance remain separate evidence.

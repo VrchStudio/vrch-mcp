@@ -101,7 +101,7 @@ export function createRemoteHTTPHandler({auth, resource, handleMCP, pairingDevic
         if (!request.headers.accept?.includes('application/json') || !request.headers.accept?.includes('text/event-stream')) {send(response, 406, {error: 'not_acceptable'}); return;}
         if (request.headers['content-type']?.split(';')[0] !== 'application/json') {send(response, 415, {error: 'invalid_request'}); return;}
         let message;
-        try {message = JSON.parse(await body(request));} catch {send(response, 400, {jsonrpc: '2.0', id: null, error: {code: -32700, message: 'Parse error'}}); return;}
+        try {message = JSON.parse(await body(request, 262144));} catch {send(response, 400, {jsonrpc: '2.0', id: null, error: {code: -32700, message: 'Parse error'}}); return;}
         if (!message || Array.isArray(message) || message.jsonrpc !== '2.0' || typeof message.method !== 'string' || message.id !== undefined && !(typeof message.id === 'string' || Number.isSafeInteger(message.id))) {send(response, 400, {jsonrpc: '2.0', id: null, error: {code: -32600, message: 'Invalid Request'}}); return;}
         if (message.id === undefined) {response.writeHead(202, {'Cache-Control': 'no-store'}); response.end(); return;}
         // The execution adapter must retain sent operations if the HTTP peer

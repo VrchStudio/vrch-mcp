@@ -46,14 +46,17 @@ for file in [args.config,args.bindings,nginx]:
 with tempfile.NamedTemporaryFile(mode='w',suffix='.yml') as temp:
     temp.write(candidate);temp.flush()
     subprocess.run([args.cloudflared,'tunnel','--config',temp.name,'ingress','validate'],check=True)
-subprocess.run([args.cloudflared,'tunnel','--origincert',args.origincert,'route','dns',match[1],args.host],check=True)
+route_changed = candidate != original
+if route_changed:
+    subprocess.run([args.cloudflared,'tunnel','--origincert',args.origincert,'route','dns',match[1],args.host],check=True)
 try:
     nginx.write_text(rendered);nginx.chmod(0o644)
     subprocess.run(['nginx','-t'],check=True)
     args.config.write_text(candidate)
     args.bindings.write_text(bindings)
     subprocess.run(['systemctl','reload','nginx'],check=True)
-    subprocess.run(['systemctl','restart',args.unit],check=True)
+    if route_changed:
+        subprocess.run(['systemctl','restart',args.unit],check=True)
 except Exception:
     for file in [args.config,args.bindings,nginx]:
         prior=backup/file.name
@@ -61,6 +64,7 @@ except Exception:
         elif file==nginx:file.unlink(missing_ok=True)
     subprocess.run(['nginx','-t'],check=True)
     subprocess.run(['systemctl','reload','nginx'],check=True)
-    subprocess.run(['systemctl','restart',args.unit],check=True)
+    if route_changed:
+        subprocess.run(['systemctl','restart',args.unit],check=True)
     raise
 print('Installed SG MCP ingress. Configuration rollback:',backup)
