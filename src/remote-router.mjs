@@ -5,6 +5,7 @@ import {createHash, randomBytes, randomUUID} from 'node:crypto';
 import {lstatSync, chmodSync} from 'node:fs';
 import {dirname, join} from 'node:path';
 import {createWorkspaceText, validateWorkspaceText, workspaceTextTools} from './remote-workspace-text.mjs';
+import {hostedCapabilities, hostedInstructions, sdkReference, sdkReferenceTool} from './remote-guidance.mjs';
 import {createAIClient} from './client.mjs';
 import {createTerminalMCP} from './mcp.mjs';
 import {createRemoteCredentialStore} from './remote-credentials.mjs';
@@ -13,7 +14,7 @@ const fail = code => Object.assign(Error(code), {code});
 const canonical = value => JSON.stringify(value, (_key, child) => child && !Array.isArray(child) && typeof child === 'object' ? Object.fromEntries(Object.keys(child).sort().map(key => [key, child[key]])) : child);
 const digest = value => createHash('sha256').update(value).digest('hex');
 const durable = new Set(['apps_create', 'apps_open', 'apps_publish', 'apps_save', 'apps_import_inspect', 'apps_import_commit', 'apps_file_commit', 'apps_launch', 'apps_write_text']);
-const hostedExcluded = new Set(['terminal_input', 'terminal_run_private', 'terminal_cancel_private_input']);
+const hostedExcluded = new Set(['terminal_input', 'terminal_run_private', 'terminal_cancel_private_input', 'apps_file_export', 'apps_file_commit', 'apps_export_begin', 'apps_import_inspect', 'apps_import_commit']);
 const content = value => [{type: 'text', text: JSON.stringify(value)}];
 
 export async function createRemoteRouter({filename, credentialDirectory, encryptionKey, resolveRegisteredTarget, createClient = createAIClient, waitMs = 20000, pendingWaitMs = 600000, resultDrainMs = 45000, idleMs = 1800000}) {
@@ -47,7 +48,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
   const snapshot = record => ({connectionRef: record.id, phase: record.phase, retryable: false,
     ...(record.code ? {code: record.code} : {}), ...(record.phase === 'request_disconnected' ? {authorizationOutcome: 'unknown'} : {}),
     ...(record.phase === 'pending' ? {deadlineKnown: !!active.get(record.id)?.inviteDeadline, ...(active.get(record.id)?.inviteDeadline ? {inviteExpiresAt: active.get(record.id).inviteDeadline} : {})} : {}),
-    ...(record.phase === 'ready' && record.capabilities ? {capabilities: JSON.parse(record.capabilities)} : {})});
+    ...(record.phase === 'ready' && record.capabilities ? {capabilities: hostedCapabilities(JSON.parse(record.capabilities))} : {})});
   const setState = (id, phase, code = null, capabilities = null) => db.prepare('UPDATE connections SET phase=?,code=?,capabilities=? WHERE id=?').run(phase, code, capabilities && JSON.stringify(capabilities), id);
   const envelopes = (value, result = {}) => ({...result, content: result.content?.length ? result.content : content(value), structuredContent: value});
   function armIdle(entry) {
@@ -55,7 +56,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
     entry.idleTimer = setTimeout(() => {
       if (closed) return;
       if (entry.requests) {entry.idleTimer = setTimeout(() => armIdle(entry), Math.min(1000, idleMs)); entry.idleTimer.unref(); return;}
-      entry.shutdown();
+      entry.shutdown('idle_timeout');
     }, Math.max(1, entry.lastCall + idleMs - Date.now()));
     entry.idleTimer.unref();
   }
@@ -68,7 +69,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
         // The relay uses 20s pings + 20s pong timeout. Drain adds 5s for a
         // final result; old runtimes have a wait bound, never a fake expiry.
         entry.pendingTimer = setTimeout(() => setImmediate(() => {
-          if (!closed && db.prepare('SELECT phase FROM connections WHERE id=?').get(id)?.phase === 'pending') entry.shutdown();
+          if (!closed && db.prepare('SELECT phase FROM connections WHERE id=?').get(id)?.phase === 'pending') entry.shutdown('approval_wait_ended');
         }), Math.max(0, (entry.inviteDeadline || Date.now() + pendingWaitMs) - Date.now()) + resultDrainMs);
         entry.pendingTimer.unref();
       }
@@ -80,6 +81,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
       if (entry && previous !== 'ready') {entry.lastCall = Date.now(); armIdle(entry);}
     }
     else if (event.type === 'ended') {
+      if (event.code === 'client_closed' && entry?.shutdownReason) event = {...event, code:entry.shutdownReason};
       clearTimeout(entry?.pendingTimer); clearTimeout(entry?.idleTimer);
       const previous = db.prepare('SELECT phase FROM connections WHERE id=?').get(id)?.phase;
       const phase = event.code === 'invite_unavailable' ? 'failed' : event.code === 'invite_expired' ? 'expired' : event.code === 'invite_canceled' ? 'cancelled'
@@ -103,11 +105,23 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
     const pending = new Map(), entry = {requests: 0, lastCall: Date.now()};
     const credentialStore = createRemoteCredentialStore({directory: credentialDirectory, key: encryptionKey,
       binding: {...identity, deviceId: record.device, channel: 'apps', connectionRef: record.id}});
-    entry.bridge = createTerminalMCP({toolCatalog: 'stable', send: message => {
+    entry.bridge = createTerminalMCP({toolCatalog: 'stable', imageDelivery: 'events', send: message => {
       if (pending.has(message.id)) {pending.get(message.id)(message.result); pending.delete(message.id);}
-    }, createClient: (address, options) => createClient(address, {...options, WebSocketImpl: target.WebSocketImpl, credentialStore, autoReconnect: false,
-      emit: event => {try {observe(record.id, event); if (event.type !== 'data') options.emit(event);} catch {queueMicrotask(() => entry.shutdown());}}})});
-    entry.shutdown = () => {clearTimeout(entry.pendingTimer); clearTimeout(entry.idleTimer); entry.bridge.close();};
+    }, createClient: (address, options) => {
+      const client = createClient(address, {...options, WebSocketImpl: target.WebSocketImpl, credentialStore, autoReconnect: false,
+        emit: event => {try {
+          observe(record.id, event);
+          if (event.type === 'collaboration') event = {...event, filePurposes: [], assistantCapabilities: hostedCapabilities(event.assistantCapabilities)};
+          if (event.type === 'apps_guide') event = {...event, instructions: event.instructions
+            .replace('Use app-workspace file_upload/file_download with apps_file_export/apps_file_commit for developer files; completed transport does not publish/save/execute files.', hostedInstructions)
+            .replace('Human screenshots arrive automatically as native image content in terminal tool results.', 'Human-shared screenshots are queued for terminal_events.')};
+          if (event.type !== 'data') options.emit(event);
+        } catch {queueMicrotask(() => entry.shutdown());}}});
+      const capabilities = client.capabilities;
+      client.capabilities = () => hostedCapabilities(capabilities());
+      return client;
+    }});
+    entry.shutdown = (reason = 'client_closed') => {entry.shutdownReason = reason; clearTimeout(entry.pendingTimer); clearTimeout(entry.idleTimer); entry.bridge.close();};
     entry.call = async (method, params) => {
       entry.requests++;
       const id = randomUUID(); const output = new Promise(resolve => pending.set(id, resolve));
@@ -126,7 +140,8 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
   await catalogBridge.receive({jsonrpc: '2.0', id: 2, method: 'tools/list'});
   const initialize = {...replies[0].result, serverInfo: {name: 'vrch-mcp-remote', version: '0.1.7-remote-dev'}};
   initialize.instructions += '\nHosted tools always require the explicit connectionRef. Hosted App tools do not expose shell input or terminal transcripts. The existing device grant remains broader than a project sandbox; this tool filter does not create project-only authorization. Device screenshots are not web Preview screenshots; apps_state reports the Preview runtime errors. Use apps_read_text/apps_write_text for bounded UTF-8 source edits in the current workspace. Hosted general file staging is not available; never treat local file paths as uploadable. Pairing does not replace the human Invite AI and Allow AI decisions.';
-  const catalog = [...replies[1].result.tools.filter(tool => !tool.name.startsWith('file_') && !hostedExcluded.has(tool.name)), ...workspaceTextTools].map(original => {
+  initialize.instructions += '\n' + hostedInstructions;
+  const catalog = [...replies[1].result.tools.filter(tool => !tool.name.startsWith('file_') && !hostedExcluded.has(tool.name)), ...workspaceTextTools, sdkReferenceTool].map(original => {
     const tool = structuredClone(original);
     tool.outputSchema = {type: 'object', properties: {connectionRef: {type: 'string'}, phase: {type: 'string'}, retryable: {type: 'boolean'}}, required: ['phase', 'retryable'], additionalProperties: true};
     if (tool.name === 'terminal_connect') {
@@ -185,6 +200,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
     entry.lastCall = Date.now(); if (record.phase === 'ready') armIdle(entry);
     if (name === 'terminal_disconnect') {entry.shutdown(); active.delete(record.id); return envelopes(snapshot(load(identity, record.id)));}
     if (!['terminal_events', 'ai_report', 'ai_capabilities'].includes(name) && record.phase !== 'ready') throw fail('approval_required');
+    if (name === 'apps_sdk_reference') return envelopes({connectionRef: record.id, phase:'succeeded', retryable:false}, {content:[{type:'text',text:sdkReference}]});
     const {connectionRef, ...values} = args;
     if (name === 'terminal_events' && (typeof (values.waitSeconds ?? 20) !== 'number' || !Number.isFinite(values.waitSeconds ?? 20) || (values.waitSeconds ?? 20) < 0 || (values.waitSeconds ?? 20) > 20)) throw fail('invalid_wait');
     const isText = name === 'apps_read_text' || name === 'apps_write_text';
@@ -239,6 +255,12 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
     if (message.method === 'ping') return {jsonrpc: '2.0', id: message.id, result: {}};
     if (message.method !== 'tools/call') return {jsonrpc: '2.0', id: message.id, error: {code: -32601, message: 'Method not found'}};
     try {return {jsonrpc: '2.0', id: message.id, result: await call(identity, message.params?.name, message.params?.arguments || {})};}
-    catch (error) {const code = error.code || 'connection_unavailable'; return {jsonrpc: '2.0', id: message.id, result: envelopes({phase: 'failed', retryable: false, code}, {isError: true, content: content({code})})};}
-  }, close() {if (closed) return; for (const entry of active.values()) entry.shutdown(); active.clear(); closed = true; db.close();}};
+    catch (error) {
+      const code = error.code || 'connection_unavailable';
+      const help = code === 'invalid_connection_arguments' ? 'For a new invitation supply url and a fresh lowercase UUID attemptId. To resume supply only the original connectionRef and resume:true.'
+        : code === 'unsupported_tool' ? hostedInstructions : undefined;
+      const value = {phase: 'failed', retryable: false, code, ...(help ? {message:help} : {})};
+      return {jsonrpc: '2.0', id: message.id, result: envelopes(value, {isError: true, content: content(value)})};
+    }
+  }, close() {if (closed) return; for (const entry of active.values()) entry.shutdown('service_restarted'); active.clear(); closed = true; db.close();}};
 }

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Report available hosted tools accurately, explain recovery, and provide an App SDK reference.
+- Keep shared screenshots out of ordinary hosted editing results.
+
 - Edit App source from web AI with conflict checks and recoverable writes, without shell tools.
 
 - Accept Claude web pairing through its published OAuth identity.

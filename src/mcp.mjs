@@ -4,8 +4,9 @@ import { toolAnnotations } from './tool-metadata.mjs';
 
 // MCP supplies native image content, never a path pretending to be model input.
 // Human captures are queued automatically and included with the next terminal result.
-export function createTerminalMCP({ send, createClient = createAIClient, allowHTTPOrigin, toolCatalog = 'dynamic' } = {}) {
+export function createTerminalMCP({ send, createClient = createAIClient, allowHTTPOrigin, toolCatalog = 'dynamic', imageDelivery = 'automatic' } = {}) {
   if (!['dynamic', 'stable'].includes(toolCatalog)) throw new Error('toolCatalog must be stable or dynamic.');
+  if (!['automatic', 'events'].includes(imageDelivery)) throw new Error('Invalid image delivery mode.');
   const permittedHTTPOrigin = validateHTTPOrigin(allowHTTPOrigin);
   let client, initialized = false, admitted = false, appsSession = false, events = [], textBytes = 0;
   const unread = new Map(), waiters = new Set(), notified = new Set();
@@ -125,7 +126,7 @@ export function createTerminalMCP({ send, createClient = createAIClient, allowHT
         if (name.startsWith('apps_')) {
           const {workspaceId, expectedRevision, operationId, ...values} = args;
           const result = await client.appsRequest(name === 'apps_exit' ? 'stop' : name.slice(5), values, {workspaceId, expectedRevision, operationId});
-          const output = drain(); output.content.unshift(text(JSON.stringify(result))); reply(output); return;
+          const output = drain(imageDelivery === 'events' ? [] : undefined); output.content.unshift(text(JSON.stringify(result))); reply(output); return;
         }
         if (name.startsWith('file_')) {
           let result;
@@ -134,7 +135,7 @@ export function createTerminalMCP({ send, createClient = createAIClient, allowHT
           else if (name === 'file_resume') result = await client.resumeTransfer();
           else if (name === 'file_cancel') result = await client.cancelTransfer();
           else {client.pauseTransfer(); result = {paused: true};}
-          const output = drain(); output.content.unshift(text(JSON.stringify(result))); reply(output); return;
+          const output = drain(imageDelivery === 'events' ? [] : undefined); output.content.unshift(text(JSON.stringify(result))); reply(output); return;
         }
         if (name === 'terminal_disconnect') { client.close(); client = null; unread.clear(); reply(drain()); return; }
         if (name === 'terminal_input') {

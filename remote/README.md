@@ -8,7 +8,7 @@ Use Node 22.23.4 and `npm ci --prefix remote --omit=dev --ignore-scripts`.
 The hosted-only `ws` dependency pins a public DNS result into the TLS connection,
 while retaining the registered device hostname for certificate verification.
 The common MCP/client code stays in `src/`. Hosted file staging is not implemented;
-general `file_*` tools are omitted. The hosted App catalog supplies `apps_read_text`
+general `file_*` tools are omitted. The hosted App catalog supplies `apps_sdk_reference`, `apps_read_text`
 and `apps_write_text` for UTF-8 source files up to 64 KiB. It omits shell input,
 private command tools and terminal transcripts; this is not an OS sandbox or a
 project-only device grant. Device screenshots do not capture the browser Preview.
@@ -24,6 +24,22 @@ replayed under a new ID. Read access is checked on the device again after downlo
 Temporary payloads are private, bounded, removed after the call and cleared on
 restart; they are not a user-facing staging/download service or draft storage.
 These text tools do not publish, save or run an App implicitly.
+
+Hosted capabilities reflect this adapter: terminal/private-command flags are false,
+general file purposes are empty, and workspaceText reports actual text transfer
+support. Package import/export and raw workspace transfer tools are omitted until
+a complete hosted transfer path exists. Shared screenshots wait for terminal_events
+or take_screenshot; ordinary App calls do not consume image batches. Device grants
+and the local STDIO catalog are unchanged.
+
+After changing the catalog during development, verify the actual client's Tool
+permissions includes the text tools and SDK reference. The current JSON-only HTTP
+transport does not advertise tools/listChanged or deliver background SSE events;
+do not claim a list_changed notification refreshed Claude. Use the host's normal
+catalog refresh and retain OAuth/connectionRef where supported. Removing and pairing
+a connector again creates a new identity and is not a transparent refresh. A service
+restart reports service_restarted and supports explicit resume of the original
+connection; idle cleanup reports idle_timeout. Neither is invitation expiration.
 
 Build from a clean, pushed commit with:
 

@@ -1,0 +1,25 @@
+// Hosted tools report the capabilities of this adapter, not the underlying shell.
+export const hostedInstructions = 'Use apps_read_text/apps_write_text for UTF-8 workspace source (64 KiB per file); read apps_sdk_reference before implementing SDK calls. General file uploads/imports, shell commands and terminal transcripts are unavailable in this hosted adapter. If these text tools are absent from your client, its tool catalogue needs refreshing through the host settings; do not install a local client or reconnect the device as a workaround. Keep the existing connectionRef. Device screenshots do not show the web Preview. Shared images are delivered by terminal_events or take_screenshot, not by editing tools.';
+export function hostedCapabilities(value) {
+  if (!value) return value;
+  const workspace = value.files?.find(item => item.purpose === 'app-workspace');
+  return {...value, terminal: false, privateCommand: false, cancelPrivateInput: false, files: [],
+    workspaceText: {read: value.apps === true && !!workspace?.directions?.includes('download'),
+      write: value.apps === true && !!workspace?.directions?.includes('upload'), maxBytes: 65536,
+      readTool: 'apps_read_text', writeTool: 'apps_write_text', referenceTool: 'apps_sdk_reference'},
+    instructions: hostedInstructions};
+}
+export const sdkReference = `My Apps SDK v1 — source contract, reviewed against Pages 666543af.
+Load <script src="/apps/sdk/apps-v1.js"></script>. This is a served route, not a file named apps-v1.js on the device; the source file is static/scripts/vrch_apps_sdk_v1.js.
+Render the initial view, then await VrchApp.ready(). It resolves when this instance is active. Handle Promise rejection by error.code. Do not wait for writes or real I/O before ready.
+VrchApp.context: appId, revision, mode (preview/device), viewport and safeInsets. Read viewport again on window resize; support 480x432 and 480x480 without reload.
+VrchApp.controls.onEvent(fn) returns an unsubscribe function. Events: {sequence,generation,source,control,type,delta?}; controls E1-E4/K1-K4; type rotate/down/up/cancel. K1 is reserved for the host Menu. Keep handlers in memory, schedule audio on the AudioContext clock and update visuals per animation frame.
+VrchApp.monitor.set({E1:{label:'Tempo',value:'120'},K2:{label:'Play',pressed:false}}) returns a Promise. Labels are <=16 characters, values <=24; use plain text.
+VrchApp.data.get(key) -> {key,exists,value,version,dataVersion}; absent key has version 0. set(key,value,{expectedVersion:old.version}) and delete(key,{expectedVersion}) use compare-and-swap. On version_conflict read again; never silently overwrite. list(cursor) -> {items,cursor,dataVersion}. JSON values <=64 KiB; keys <=128 characters, not file paths. Save asynchronously, not per beat. Preview and device data are separate; engineering source is not this store.
+VrchApp.files.put(name,blob,{id?,expectedVersion:0}) stores an App data Blob up to 64 MiB. get(id), remove(id,{expectedVersion}), list(cursor) operate on App-owned data, not workspace source files.
+VrchApp.audio.openOutput({channels:2}) -> handle; await handle.createNode(audioContext) using a 48 kHz AudioContext with AudioWorklet, then connect the App graph to that node. handle.close() closes it. audio.openInput({channels:2,echoCancellation?}) requires declared audio_input and actual permission; Preview does not provide real device input. Do not use remote messages as the beat clock.
+Other SDK namespaces include camera, imu, system and websocket. Their real I/O requires the precise manifest capability and normal user/device authorization; this basic reference does not grant it. Inspect the served SDK and current capabilities before using an unlisted API.
+The App manifest needs accurate guide metadata: a short description, Quick start control/action rows, control reference and audio/saved-settings notes. The host owns Guide and K1 Menu; do not implement a second guide. Include a suitable package icon for a finished App; missing icons are currently permitted by the package format.
+Workspace flow: apps_read_text returns source in the second text block and SHA-256 metadata first. apps_write_text requires expectedSha256 (null only for a new file), explicit workspaceId/path and stable operationId. Read apps_state draftRevision before apps_publish/apps_save; inspect actual target appliedRevision/errors afterwards. These file writes are not a whole-project transaction. A pending write is queried with apps_operation_status(originalAction:'write_text') and its original ID. Never blindly replay input or launch.
+`;
+export const sdkReferenceTool = {name: 'apps_sdk_reference', description: 'Read the My Apps SDK v1 source-authoring reference, including ready, controls, monitor, versioned App data and basic audio. Does not execute code or grant I/O.', inputSchema: {type:'object',properties:{},required:[],additionalProperties:false}, annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false}};

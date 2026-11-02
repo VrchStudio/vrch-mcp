@@ -54,6 +54,19 @@ test('explicit remote references isolate identities and clients, keep attempt re
   try {
     const {reference, attemptId, url} = await f.connect();
     const tools = f.router.catalog;
+    const caps = await f.call('ai_capabilities', {connectionRef:reference});
+    assert.equal(caps.structuredContent.capabilities.terminal, false);
+    assert.equal(JSON.parse(caps.content[0].text).terminal, false);
+    assert.deepEqual(JSON.parse(caps.content[0].text).files, []);
+    assert(caps.structuredContent.capabilities.instructions.includes('apps_write_text'));
+    const guide = await f.call('apps_sdk_reference', {connectionRef:reference});
+    assert(guide.content[0].text.includes('VrchApp.controls.onEvent'));
+    assert(guide.content[0].text.includes('expectedVersion:old.version'));
+    const badConnect = await f.call('terminal_connect');
+    assert.equal(badConnect.structuredContent.code, 'invalid_connection_arguments');
+    assert(badConnect.structuredContent.message.includes('attemptId'));
+    for (const name of ['apps_file_export','apps_file_commit','apps_export_begin','apps_import_inspect','apps_import_commit']) assert(!tools.some(tool=>tool.name===name));
+
     assert(tools.find(tool => tool.name === 'apps_save').inputSchema.required.includes('operationId'));
     assert(tools.find(tool => tool.name === 'apps_state').inputSchema.required.includes('connectionRef'));
     assert(!tools.some(tool => tool.name === 'file_upload'), 'Local filesystem paths are not exposed by this hosted slice.');
@@ -103,6 +116,7 @@ test('lost response and server restart preserve original operation IDs without r
     await until(() => f.remote.frames.some(frame => frame.action === 'publish'));
     await f.restart();
     assert.equal((await f.call('terminal_events', {connectionRef: reference})).structuredContent.phase, 'disconnected');
+    assert.equal((await f.call('terminal_events', {connectionRef: reference})).structuredContent.code, 'service_restarted');
     assert.equal((await f.call('apps_state', {connectionRef: reference})).structuredContent.code, 'disconnected');
     await f.call('terminal_connect', {connectionRef: reference, resume: true});
     await until(() => f.remote.frames.some(frame => frame.type === 'ai_resume'));
@@ -160,6 +174,7 @@ test('idle cleanup waits for an in-flight edit and keeps its durable result for 
     assert.equal((await f.call('apps_publish', {connectionRef: reference, operationId, workspaceId: 'workspace', expectedRevision: 'revision'})).structuredContent.phase, 'pending');
     await new Promise(resolve => setTimeout(resolve, 220));
     assert.equal((await f.call('terminal_events', {connectionRef: reference})).structuredContent.phase, 'disconnected');
+    assert.equal((await f.call('terminal_events', {connectionRef: reference})).structuredContent.code, 'idle_timeout');
     await f.call('terminal_connect', {connectionRef: reference, resume: true});
     await until(() => f.remote.frames.some(frame => frame.type === 'ai_resume'));
     await new Promise(resolve => setTimeout(resolve, 10));
@@ -233,5 +248,22 @@ test('a lost text commit response is queried after restart without uploading or 
     assert.equal(f.remote.frames.filter(value=>value.type==='file_begin'&&value.direction==='upload').length,1);
     assert.equal(f.remote.state.workspaceFiles['index.html'].toString(),args.content);
     await new Promise(resolve=>setTimeout(resolve,110));
+  } finally {await f.close();}
+});
+
+test('a new invitation always waits for approval; fast approval retains pending evidence and clears its deadline timer', {skip: !supported}, async () => {
+  const f = await fixture({pendingWaitMs:50,resultDrainMs:100});
+  try {
+    const reference=(await f.call('terminal_connect',{url:'https://registered.example/apps/ai?invite=fixture',attemptId:randomUUID()})).structuredContent.connectionRef;
+    await until(()=>f.remote.frames.some(frame=>frame.type==='ai_join'));
+    assert.equal((await f.call('apps_state',{connectionRef:reference})).structuredContent.code,'approval_required');
+    f.remote.approve();
+    await until(()=>f.emitted.some(event=>event.type==='collaboration'));
+    const events=await f.call('terminal_events',{connectionRef:reference,waitSeconds:0});
+    assert.equal(events.structuredContent.phase,'ready');
+    const types=events.content.filter(item=>item.type==='text').map(item=>{try{return JSON.parse(item.text).type;}catch{}});
+    assert(types.indexOf('ai_pending')>=0 && types.indexOf('ai_approved')>types.indexOf('ai_pending'));
+    await new Promise(resolve=>setTimeout(resolve,170));
+    assert.equal((await f.call('apps_state',{connectionRef:reference})).structuredContent.phase,'succeeded');
   } finally {await f.close();}
 });
