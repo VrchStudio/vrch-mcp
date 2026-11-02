@@ -76,6 +76,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
     }
     else if (['ai_approved', 'ai_resumed'].includes(event.type)) {clearTimeout(entry?.pendingTimer); if (entry) entry.pendingTimer = null; setState(id, 'approved');}
     else if (event.type === 'collaboration') {
+      if (entry) entry.inputEpoch=event.epoch;
       const previous = db.prepare('SELECT phase FROM connections WHERE id=?').get(id)?.phase;
       setState(id, 'ready', null, event.assistantCapabilities);
       if (entry && previous !== 'ready') {entry.lastCall = Date.now(); armIdle(entry);}
@@ -186,10 +187,10 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
     promise.then(value => {clearTimeout(timer); resolve(value);}, error => {clearTimeout(timer); reject(error);});
   });
   function business(result) {
-    let value; try {value = JSON.parse(result.content?.[0]?.text);} catch {}
+    let value = result.structuredContent; if (!value) {try {value = JSON.parse(result.content?.[0]?.text);} catch {}}
     const code = result.isError ? (value?.code || /^([a-z_]+):/.exec(result.content?.[0]?.text || '')?.[1] || 'operation_failed') : null;
     return {phase: result.isError ? ['connection_interrupted', 'operation_pending'].includes(code) ? 'outcome_unknown' : 'failed' : 'succeeded', retryable: false,
-      ...(code ? {code} : {}), ...(value && typeof value === 'object' ? {result: value} : {})};
+      ...(code ? {code, message: (value?.message || result.content?.[0]?.text?.replace(/^[a-z_]+:\s*/, '') || 'Operation failed.').slice(0,1024)} : {}), ...(value && typeof value === 'object' ? {result: value} : {})};
   }
   async function call(identity, name, args) {
     if (!catalog.some(tool => tool.name === name)) throw fail('unsupported_tool');
@@ -200,16 +201,31 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
     entry.lastCall = Date.now(); if (record.phase === 'ready') armIdle(entry);
     if (name === 'terminal_disconnect') {entry.shutdown(); active.delete(record.id); return envelopes(snapshot(load(identity, record.id)));}
     if (!['terminal_events', 'ai_report', 'ai_capabilities'].includes(name) && record.phase !== 'ready') throw fail('approval_required');
-    if (name === 'apps_sdk_reference') return envelopes({connectionRef: record.id, phase:'succeeded', retryable:false}, {content:[{type:'text',text:sdkReference}]});
+    if (name === 'apps_sdk_reference') return envelopes({connectionRef: record.id, phase:'succeeded', retryable:false, result:{text:sdkReference}}, {content:content({reference:'My Apps SDK v1',body:'structuredContent.result.text'})});
     const {connectionRef, ...values} = args;
     if (name === 'terminal_events' && (typeof (values.waitSeconds ?? 20) !== 'number' || !Number.isFinite(values.waitSeconds ?? 20) || (values.waitSeconds ?? 20) < 0 || (values.waitSeconds ?? 20) > 20)) throw fail('invalid_wait');
     const isText = name === 'apps_read_text' || name === 'apps_write_text';
     if (isText) validateWorkspaceText(name, values);
     const invoke = async () => {
-      if (!isText) return entry.call('tools/call', {name, arguments: values});
+      if (!isText) {
+        if (!['apps_control','apps_interface_input','apps_host_input'].includes(name)) return entry.call('tools/call',{name,arguments:values});
+        // Preserve complete gestures in call order. The device input sequence
+        // is monotonic; concurrent host calls must not interleave click edges.
+        const epoch=entry.inputEpoch;
+        const job=(entry.inputTail||Promise.resolve()).catch(()=>{}).then(()=>{
+          if(entry.inputEpoch!==epoch)throw fail('control_changed');
+          return entry.call('tools/call',{name,arguments:values});
+        });
+        entry.inputTail=job;
+        return job;
+      }
       entry.requests++;
       try {return await workspaceText.run(connectionRef, name, values, (tool, input) => entry.call('tools/call', {name: tool, arguments: input}));}
-      catch (error) {return {isError: true, content: [{type: 'text', text: (error.code || 'workspace_transfer_failed') + ': Workspace transfer did not complete.'}]};}
+      catch (error) {
+        const code=error.code||'workspace_transfer_failed';
+        const help={file_not_found:'This workspace file does not exist. Use expectedSha256:null only when intentionally creating it.',transfer_busy:'This connection has eight queued text transfers. Wait for their results before sending more.',invalid_data:'The device refused this workspace path. It may be missing or invalid; do not overwrite an existing file without its current SHA-256.'}[code]||'Workspace transfer did not complete.';
+        return {isError:true,content:[{type:'text',text:code+': '+help}]};
+      }
       finally {entry.requests--;}
     };
     if (name === 'apps_operation_status') {
@@ -245,7 +261,18 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
     }
     const result = await bounded(invoke(), null);
     if (!result) return envelopes({connectionRef, phase: 'outcome_unknown', retryable: false});
-    if (name === 'terminal_events' || name === 'ai_capabilities') return envelopes(snapshot(load(identity, connectionRef)), result);
+    if (name === 'terminal_events' || name === 'take_screenshot') {
+      const events = [], images = [];
+      for (const item of result.content || []) {
+        if (item.type !== 'text') continue;
+        let event; try {event=JSON.parse(item.text);} catch {event={type:'message',message:item.text};}
+        (event.type === 'screenshot' ? images : events).push(event);
+      }
+      const value = name === 'terminal_events' ? {...snapshot(load(identity,connectionRef)),events,images}
+        : {connectionRef,...business(result),result:{images,events}};
+      return envelopes(value,{...result,content:[...content({connectionRef,phase:value.phase,imageCount:images.length}),...(result.content||[]).filter(item=>item.type!=='text')]});
+    }
+    if (name === 'ai_capabilities') return envelopes(snapshot(load(identity, connectionRef)), result);
     return envelopes({connectionRef, ...business(result)}, result);
   }
   return {catalog, async handle(identity, message) {
@@ -258,7 +285,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
     catch (error) {
       const code = error.code || 'connection_unavailable';
       const help = code === 'invalid_connection_arguments' ? 'For a new invitation supply url and a fresh lowercase UUID attemptId. To resume supply only the original connectionRef and resume:true.'
-        : code === 'unsupported_tool' ? hostedInstructions : undefined;
+        : code === 'unsupported_tool' ? hostedInstructions : code === 'control_changed' ? 'Control changed while this input was queued. Read the current state before deciding on a new action; do not replay automatically.' : undefined;
       const value = {phase: 'failed', retryable: false, code, ...(help ? {message:help} : {})};
       return {jsonrpc: '2.0', id: message.id, result: envelopes(value, {isError: true, content: content(value)})};
     }

@@ -14,13 +14,15 @@ private command tools and terminal transcripts; this is not an OS sandbox or a
 project-only device grant. Device screenshots do not capture the browser Preview.
 
 Read a file with explicit `connectionRef`, `workspaceId` and relative `path`.
-The source is the second text block; the first block/structured result contains
-its verified SHA-256 and size. Write with that SHA as `expectedSha256` (null only
+The source is `structuredContent.result.text`, alongside its verified SHA-256
+and size. The SDK reference body uses the same field. A short content block
+avoids duplicating large source text; structured-only hosts receive the full body. Write with that SHA as `expectedSha256` (null only
 for a new file), `content` and a fresh `operationId`. Each file uses existing File
 V2 transfer plus atomic workspace commit. There is no whole-project transaction:
 read `apps_state` for the new draftRevision before publishing/saving. An uncertain
 write is queried with the original ID and `originalAction: "write_text"`, never
-replayed under a new ID. Read access is checked on the device again after download.
+replayed under a new ID. Read access is checked on the device again after download. Up to eight parallel
+text requests are queued per connection onto its single File V2 channel.
 Temporary payloads are private, bounded, removed after the call and cleared on
 restart; they are not a user-facing staging/download service or draft storage.
 These text tools do not publish, save or run an App implicitly.
@@ -29,7 +31,11 @@ Hosted capabilities reflect this adapter: terminal/private-command flags are fal
 general file purposes are empty, and workspaceText reports actual text transfer
 support. Package import/export and raw workspace transfer tools are omitted until
 a complete hosted transfer path exists. Shared screenshots wait for terminal_events
-or take_screenshot; ordinary App calls do not consume image batches. Device grants
+or take_screenshot; ordinary App calls do not consume image batches. Screenshot results expose
+`structuredContent.result.images` metadata; events expose `events`/`images` in
+structuredContent so a preceding App event cannot hide capture timestamps.
+Hosted control/interface/menu calls serialize complete gestures; queued input is
+refused if its control epoch changes. Hardware input is not put on this queue. Device grants
 and the local STDIO catalog are unchanged.
 
 After changing the catalog during development, verify the actual client's Tool

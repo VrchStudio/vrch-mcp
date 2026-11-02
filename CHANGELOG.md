@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Deliver source text, SDK help and screenshot details to structured-result clients.
+- Queue parallel text reads and keep hosted control gestures in order.
+
 - Report available hosted tools accurately, explain recovery, and provide an App SDK reference.
 - Keep shared screenshots out of ordinary hosted editing results.
 

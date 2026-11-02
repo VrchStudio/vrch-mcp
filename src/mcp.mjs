@@ -142,7 +142,7 @@ export function createTerminalMCP({ send, createClient = createAIClient, allowHT
           if (typeof args.data !== 'string' || !client.input(args.data)) throw new Error('AI input control is required.');
           reply(drain(undefined, 'Input sent; execution is not yet confirmed. Read terminal_events for output or rejection.')); return;
         } else if (name === 'take_screenshot') {
-          const batch = await client.takeScreenshot({ screen: args.screen }); reply(drain()); return;
+          const batch = await client.takeScreenshot({ screen: args.screen }); reply(drain(batch)); return;
         } else if (name === 'terminal_events') {
           const seconds = args.waitSeconds ?? 20;
           if (!Number.isFinite(seconds) || seconds < 0 || seconds > 25) throw new Error('waitSeconds must be between 0 and 25. Retry terminal_events({}) for the default 20-second wait.');

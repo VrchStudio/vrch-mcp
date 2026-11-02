@@ -11,7 +11,7 @@ const [major, minor] = process.versions.node.split('.').map(Number);
 const supported = major > 22 || major === 22 && minor >= 13;
 const {createRemoteRouter} = supported ? await import('../src/remote-router.mjs') : {};
 const identity = {issuer: 'https://mcp.example', principal: 'paired-identity', oauthClientId: 'chatgpt-client'};
-async function fixture({delayPublish = false, delayCommit = false, waitMs = 1000, ...timers} = {}) {
+async function fixture({delayPublish = false, delayCommit = false, syntheticImage = false, waitMs = 1000, ...timers} = {}) {
   const remote = await relay(), directory = mkdtempSync(join(tmpdir(), 'vrch-remote-router-'));
   remote.state.recordOperations = true;
   const remoteOrigin = new URL(remote.url).origin.replace(/^http/, 'ws');
@@ -28,7 +28,13 @@ async function fixture({delayPublish = false, delayCommit = false, waitMs = 1000
         const result = await request(...values);
         if (delayPublish && values[0] === 'publish' || delayCommit && values[0] === 'file_commit') await new Promise(resolve => setTimeout(resolve, 100));
         return result;
-      }; return client;
+      };
+      if(syntheticImage){
+        const image={metadata:{type:'screenshot',id:'image-fixture',batchId:'batch-fixture',source:'ai',capturedAt:'2026-11-02T23:00:00Z',sha256:'a'.repeat(64),width:1,height:1},data:Buffer.from('fixture-image')};
+        client.takeScreenshot=async()=>{args.emit({type:'apps_state',sequence:99});args.imageInput(image,{signal:{aborted:false}});return [image];};
+        client.screenshotBatches=()=>[[image]];client.sharedScreenshots=()=>[image];
+      }
+      return client;
     }};
   let router = await createRemoteRouter(options), sequence = 0;
   const call = async (name, args = {}, actor = identity) => (await router.handle(actor, {jsonrpc: '2.0', id: ++sequence, method: 'tools/call', params: {name, arguments: args}})).result;
@@ -60,8 +66,8 @@ test('explicit remote references isolate identities and clients, keep attempt re
     assert.deepEqual(JSON.parse(caps.content[0].text).files, []);
     assert(caps.structuredContent.capabilities.instructions.includes('apps_write_text'));
     const guide = await f.call('apps_sdk_reference', {connectionRef:reference});
-    assert(guide.content[0].text.includes('VrchApp.controls.onEvent'));
-    assert(guide.content[0].text.includes('expectedVersion:old.version'));
+    assert(guide.structuredContent.result.text.includes('VrchApp.controls.onEvent'));
+    assert(guide.structuredContent.result.text.includes('expectedVersion:old.version'));
     const badConnect = await f.call('terminal_connect');
     assert.equal(badConnect.structuredContent.code, 'invalid_connection_arguments');
     assert(badConnect.structuredContent.message.includes('attemptId'));
@@ -192,8 +198,10 @@ test('hosted text editing uses real File V2, atomic workspace commit and conflic
   try {
     const {reference} = await f.connect(), base = {connectionRef: reference, workspaceId, path:'index.html'};
     const read = await f.call('apps_read_text', base);
-    assert.equal(read.structuredContent.phase, 'succeeded'); assert.equal(read.content[1].text, initial);
+    assert.equal(read.structuredContent.phase, 'succeeded'); assert.equal(read.structuredContent.result.text, initial);
     assert.equal(read.structuredContent.result.sha256, fileSHA(initial));
+    const parallel = await Promise.all(Array.from({length:3},()=>f.call('apps_read_text',base)));
+    assert(parallel.every(result=>!result.isError&&result.structuredContent.result.text===initial));
     const operationId = randomUUID(), next = '<h1>Updated</h1>\n';
     const write = {...base, operationId, expectedSha256:fileSHA(initial), content:next};
     assert.equal((await f.call('apps_write_text', write)).structuredContent.phase, 'succeeded');
@@ -204,7 +212,7 @@ test('hosted text editing uses real File V2, atomic workspace commit and conflic
     assert.equal((await f.call('apps_write_text', {...write, operationId:randomUUID()})).structuredContent.code, 'file_conflict');
     assert.equal(f.remote.state.workspaceFiles['index.html'].toString(), next);
     assert.equal((await f.call('apps_write_text', {...base, path:'new.js', operationId:randomUUID(), expectedSha256:null, content:''})).structuredContent.phase, 'succeeded');
-    assert.equal((await f.call('apps_read_text', {...base, path:'new.js'})).content[1].text, '');
+    assert.equal((await f.call('apps_read_text', {...base, path:'new.js'})).structuredContent.result.text, '');
     assert(!f.remote.frames.some(value=>value.type==='input'||['publish','save','launch'].includes(value.action)));
     assert.deepEqual(readdirSync(join(f.directory,'workspace-transfers')), []);
     assert(!readFileSync(f.filename).includes(Buffer.from(next)));
@@ -261,9 +269,54 @@ test('a new invitation always waits for approval; fast approval retains pending 
     await until(()=>f.emitted.some(event=>event.type==='collaboration'));
     const events=await f.call('terminal_events',{connectionRef:reference,waitSeconds:0});
     assert.equal(events.structuredContent.phase,'ready');
-    const types=events.content.filter(item=>item.type==='text').map(item=>{try{return JSON.parse(item.text).type;}catch{}});
+    const types=events.structuredContent.events.map(item=>item.type);
     assert(types.indexOf('ai_pending')>=0 && types.indexOf('ai_approved')>types.indexOf('ai_pending'));
     await new Promise(resolve=>setTimeout(resolve,170));
     assert.equal((await f.call('apps_state',{connectionRef:reference})).structuredContent.phase,'succeeded');
   } finally {await f.close();}
+});
+
+test('hosted parallel control tools keep complete gestures ordered and do not resume queued input after ownership changes', {skip:!supported},async()=>{
+ const f=await fixture();
+ try{
+  const {reference}=await f.connect(),base={connectionRef:reference,target:'device',instanceId:'fixture-instance',generation:1};
+  await Promise.all([
+   f.call('apps_control',{...base,control:'K2',type:'click',holdMs:40}),
+   f.call('apps_control',{...base,control:'E1',type:'rotate',delta:4}),
+   f.call('apps_control',{...base,control:'K3',type:'click',holdMs:0})
+  ]);
+  const frames=f.remote.frames.filter(v=>v.action==='control_input').map(v=>v.args.event);
+  assert.deepEqual(frames.map(v=>v.control+':'+v.type),['K2:down','K2:up','E1:rotate','K3:down','K3:up']);
+  const first=f.call('apps_control',{...base,control:'K2',type:'click',holdMs:60});
+  const queued=f.call('apps_control',{...base,control:'E4',type:'rotate',delta:3});
+  await until(()=>f.remote.frames.filter(v=>v.action==='control_input').length===6);
+  f.remote.update({owner:'human',epoch:2});
+  await first;const refused=await queued;assert.equal(refused.structuredContent.code,'control_changed');
+  assert(!f.remote.frames.some(v=>v.action==='control_input'&&v.args.event.control==='E4'));
+ }finally{await f.close();}
+});
+
+test('structured-only consumers receive complete bounded source and SDK text without duplicating the body', {skip:!supported},async()=>{
+ const f=await fixture(),workspaceId=randomUUID(),body='\"\\'.repeat(32768);
+ f.remote.state.workspaceId=workspaceId;f.remote.state.workspaceFiles={'index.html':Buffer.from(body)};
+ try{
+  const {reference}=await f.connect();
+  const read=await f.call('apps_read_text',{connectionRef:reference,workspaceId,path:'index.html'});
+  assert.equal(read.structuredContent.result.text,body);
+  assert(JSON.stringify(read).length<150000);
+  assert(!read.content.some(v=>v.text===body));
+  const guide=await f.call('apps_sdk_reference',{connectionRef:reference});
+  assert(guide.structuredContent.result.text.includes('VrchApp.ready()'));
+ }finally{await f.close();}
+});
+
+test('structured screenshot metadata survives an unrelated state event before the image', {skip:!supported},async()=>{
+ const f=await fixture({syntheticImage:true});
+ try{
+  const {reference}=await f.connect();const result=await f.call('take_screenshot',{connectionRef:reference});
+  assert.equal(result.structuredContent.result.images[0].capturedAt,'2026-11-02T23:00:00Z');
+  assert.equal(result.structuredContent.result.images[0].sha256,'a'.repeat(64));
+  assert(result.structuredContent.result.events.some(event=>event.type==='apps_state'));
+  assert.equal(result.content.filter(item=>item.type==='image').length,1);
+ }finally{await f.close();}
 });
