@@ -10,6 +10,8 @@ const {createPairingAuthorization} = supported ? await import('../src/remote-aut
 const issuer = 'https://mcp-sg.example', resource = issuer + '/mcp';
 const clientId = 'https://chatgpt.com/oauth/client.json', redirect = 'https://chatgpt.com/connector_platform_oauth_redirect';
 const clients = new Map([[clientId, {tokenEndpointAuthMethod: 'none', redirectUris: [redirect]}], ['other-client', {tokenEndpointAuthMethod: 'none', redirectUris: [redirect]}]]);
+const claudeId = 'https://claude.ai/oauth/mcp-oauth-client-metadata', claudeRedirect = 'https://claude.ai/api/mcp/auth_callback';
+clients.set(claudeId, {tokenEndpointAuthMethod: 'none', redirectUris: [claudeRedirect]});
 const codeVerifier = () => randomBytes(32).toString('base64url');
 const params = verifier => ({client_id: clientId, redirect_uri: redirect, resource, response_type: 'code', scope: 'vrch:mcp', state: 'retained-state', code_challenge_method: 'S256', code_challenge: createHash('sha256').update(verifier).digest('base64url')});
 const keys = generateKeyPairSync('ed25519');
@@ -107,5 +109,26 @@ test('a signed refusal cannot approve a pairing, and errors return the exact iss
     assert.equal(callback.searchParams.has('code'), false);
     await assert.rejects(auth.approve(started.id, proof(expected)), {code: 'pairing_conflict'});
     assert.throws(() => auth.authorizationError({...params(verifier), redirect_uri: 'https://evil.example'}, 'invalid_request'), {code: 'invalid_redirect_uri'});
+  } finally {auth.close();}
+});
+
+
+test('Claude web pairing uses its exact callback and cannot exchange ChatGPT codes', {skip: !supported}, async () => {
+  const auth = open();
+  try {
+    const verifier = codeVerifier();
+    assert.throws(() => auth.begin({...params(verifier), client_id: claudeId}), {code: 'invalid_redirect_uri'});
+    const started = auth.begin({...params(verifier), client_id: claudeId, redirect_uri: claudeRedirect});
+    const challenge = auth.challenge(started.id);
+    assert.equal(challenge.clientId, claudeId); assert.equal(challenge.redirectUri, claudeRedirect);
+    await auth.approve(started.id, proof(challenge));
+    const callback = new URL(auth.finish(started.id, started.browserSecret).redirect);
+    assert.equal(callback.origin + callback.pathname, claudeRedirect);
+    const code = callback.searchParams.get('code');
+    assert.throws(() => auth.exchange(exchange(code, verifier)), {code: 'invalid_grant'});
+    const tokens = auth.exchange(exchange(code, verifier, {client_id: claudeId, redirect_uri: claudeRedirect}));
+    assert.equal(auth.authenticate(tokens.access_token).oauthClientId, claudeId);
+    assert.throws(() => auth.exchange({grant_type: 'refresh_token', client_id: clientId, resource, refresh_token: tokens.refresh_token}), {code: 'invalid_grant'});
+    assert(auth.exchange({grant_type: 'refresh_token', client_id: claudeId, resource, refresh_token: tokens.refresh_token}).access_token);
   } finally {auth.close();}
 });

@@ -1,7 +1,7 @@
 # Hosted Remote MCP (development)
 
 This private service package adds Streamable HTTP and device-approved OAuth for
-ChatGPT. It is separate from the published dependency-free STDIO package (0.1.7).
+ChatGPT and Claude web. It is separate from the published dependency-free STDIO package (0.1.7).
 It is not a published MCP release or a claim of ChatGPT/device acceptance.
 
 Use Node 22.23.4 and `npm ci --prefix remote --omit=dev --ignore-scripts`.
@@ -53,3 +53,10 @@ ChatGPT, never ChatGPT's client identity. It does not grant an invitation or
 approve itself. The validation browser receives the authorization code; the
 SDK keeps its verifier and tokens locally. The callback reflects no parameters
 and loads no external resources. Disable the option when this validation ends.
+
+The service verifies the selected hosted clients from their published CIMD URLs
+in `remote/clients.mjs`. Only their exact hosted callbacks are enabled; native
+Claude Code callbacks are outside this slice. A failed metadata fetch disables
+that client's new authorization on this process start, without trusting an
+unverified document or preventing the other verified client from starting.
+Actual Claude account connection and App editing remain separate acceptance.

@@ -1,4 +1,4 @@
-import {readJSON} from './read-json.mjs';
+import {loadWebClients} from './clients.mjs';
 import {createServer} from 'node:http';
 import {readFileSync, mkdirSync} from 'node:fs';
 import {join} from 'node:path';
@@ -13,16 +13,11 @@ const issuer = required('VRCH_MCP_ISSUER'), resource = issuer + '/mcp', director
 mkdirSync(directory, {recursive: true, mode: 0o700});
 const key = Buffer.from(readFileSync(required('VRCH_MCP_ENCRYPTION_KEY_FILE'), 'utf8').trim(), 'base64');
 if (key.length !== 32) throw Error('Invalid recovery encryption key.');
-const clientId = 'https://chatgpt.com/oauth/client.json';
-const metadataResponse = await fetch(clientId, {redirect: 'error', signal: AbortSignal.timeout(10000)});
-if (!metadataResponse.ok) throw Error('ChatGPT client metadata is unavailable.');
-const metadata = await readJSON(metadataResponse, 65536);
-const methods = metadata.token_endpoint_auth_methods_supported || [metadata.token_endpoint_auth_method];
-if (metadata.client_id !== clientId || !methods.includes('none')
-    || !metadata.redirect_uris?.includes('https://chatgpt.com/connector_platform_oauth_redirect')) throw Error('Unsupported ChatGPT client metadata.');
-const clients = new Map([[clientId, {tokenEndpointAuthMethod: 'none', redirectUris: metadata.redirect_uris}]]);
+const {clients, unavailable} = await loadWebClients();
+for (const name of unavailable) process.stderr.write('OAuth client metadata unavailable: ' + name + '\n');
 const sdkValidation = process.env.VRCH_MCP_SDK_VALIDATION === 'true';
 if (sdkValidation) clients.set(issuer + '/sdk-client.json', {tokenEndpointAuthMethod: 'none', redirectUris: [issuer + '/sdk-callback']});
+if (!clients.size) throw Error('No verified OAuth client is available.');
 const auth = createPairingAuthorization({filename: join(directory, 'auth.sqlite'), issuer, resource, clients,
   verifyPairing: createDevicePairingVerifier({publicKey: readFileSync(required('VRCH_MCP_DEVICE_VERIFY_KEY_FILE')), issuer: required('VRCH_MCP_DEVICE_ISSUER')})});
 const router = await createRemoteRouter({filename: join(directory, 'connections.sqlite'), credentialDirectory: join(directory, 'credentials'), encryptionKey: key,
