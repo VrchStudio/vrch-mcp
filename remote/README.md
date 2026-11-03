@@ -27,6 +27,10 @@ Temporary payloads are private, bounded, removed after the call and cleared on
 restart; they are not a user-facing staging/download service or draft storage.
 These text tools do not publish, save or run an App implicitly.
 
+The SDK reference includes camera frame lifetime/errors and negotiated settings, audio PCM/node APIs and input inventory, system/IMU response shapes, and the distinction between browser media consent and launch communication grants. Device availability is not analog plug detection or a physical health check.
+
+Completed operation receipts remain queryable using their original connectionRef while disconnected. A new modification refused before invocation reports delivery:not_sent and the retained disconnect reason; an already accepted unresolved operation remains outcome_unknown. Resume the original reference before querying the device. A new connection is not a substitute operation namespace, and no retry or reconnection is implicit.
+
 Hosted capabilities reflect this adapter: terminal/private-command flags are false,
 general file purposes are empty, and workspaceText reports actual text transfer
 support. Package import/export and raw workspace transfer tools are omitted until

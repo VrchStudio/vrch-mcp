@@ -123,7 +123,7 @@ test('lost response and server restart preserve original operation IDs without r
     await f.restart();
     assert.equal((await f.call('terminal_events', {connectionRef: reference})).structuredContent.phase, 'disconnected');
     assert.equal((await f.call('terminal_events', {connectionRef: reference})).structuredContent.code, 'service_restarted');
-    assert.equal((await f.call('apps_state', {connectionRef: reference})).structuredContent.code, 'disconnected');
+    assert.equal((await f.call('apps_state', {connectionRef: reference})).structuredContent.code, 'service_restarted');
     await f.call('terminal_connect', {connectionRef: reference, resume: true});
     await until(() => f.remote.frames.some(frame => frame.type === 'ai_resume'));
     for (let i = 0; i < 100; i++) {
@@ -319,4 +319,28 @@ test('structured screenshot metadata survives an unrelated state event before th
   assert(result.structuredContent.result.events.some(event=>event.type==='apps_state'));
   assert.equal(result.content.filter(item=>item.type==='image').length,1);
  }finally{await f.close();}
+});
+
+
+test('offline receipts distinguish unsent calls from prior outcomes without crossing connection ownership', {skip: !supported}, async () => {
+  const f=await fixture({idleMs:60});
+  try {
+    const {reference}=await f.connect(),operationId=randomUUID();
+    const args={connectionRef:reference,operationId,workspaceId:'workspace',expectedRevision:'revision'};
+    assert.equal((await f.call('apps_publish',args)).structuredContent.phase,'succeeded');
+    await new Promise(resolve=>setTimeout(resolve,150));
+    const query={connectionRef:reference,originalOperationId:operationId,originalAction:'publish'};
+    assert.equal((await f.call('apps_operation_status',query)).structuredContent.phase,'succeeded');
+    assert.equal((await f.call('apps_publish',args)).structuredContent.phase,'succeeded');
+    assert.equal((await f.call('apps_publish',{...args,expectedRevision:'changed'})).structuredContent.code,'operation_conflict');
+    const missing=await f.call('apps_operation_status',{...query,originalOperationId:randomUUID()});
+    assert.equal(missing.structuredContent.phase,'outcome_unknown');
+    assert.equal(missing.structuredContent.code,'idle_timeout');
+    const unsent=await f.call('apps_publish',{...args,operationId:randomUUID()});
+    assert.equal(unsent.structuredContent.delivery,'not_sent');assert.equal(unsent.structuredContent.code,'idle_timeout');
+    assert.equal(f.remote.frames.filter(frame=>frame.action==='publish').length,1);
+    assert.equal((await f.call('apps_operation_status',query,{...identity,principal:'other'})).structuredContent.code,'context_mismatch');
+    await f.restart();
+    assert.equal((await f.call('apps_operation_status',query)).structuredContent.phase,'succeeded');
+  } finally {await f.close();}
 });

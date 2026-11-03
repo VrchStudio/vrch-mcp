@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Explain camera, audio, system and IMU APIs directly to web AI clients.
+- Read completed operation receipts while offline and distinguish calls not sent.
+
 - Pair through the current My Apps device without a fixed host list.
 
 - Deliver source text, SDK help and screenshot details to structured-result clients.

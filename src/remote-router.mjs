@@ -189,7 +189,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
   function business(result) {
     let value = result.structuredContent; if (!value) {try {value = JSON.parse(result.content?.[0]?.text);} catch {}}
     const code = result.isError ? (value?.code || /^([a-z_]+):/.exec(result.content?.[0]?.text || '')?.[1] || 'operation_failed') : null;
-    return {phase: result.isError ? ['connection_interrupted', 'operation_pending'].includes(code) ? 'outcome_unknown' : 'failed' : 'succeeded', retryable: false,
+    return {phase: result.isError ? ['connection_interrupted', 'operation_pending', 'disconnected', 'transport_disconnected', 'request_timeout'].includes(code) ? 'outcome_unknown' : 'failed' : 'succeeded', retryable: false,
       ...(code ? {code, message: (value?.message || result.content?.[0]?.text?.replace(/^[a-z_]+:\s*/, '') || 'Operation failed.').slice(0,1024)} : {}), ...(value && typeof value === 'object' ? {result: value} : {})};
   }
   async function call(identity, name, args) {
@@ -197,7 +197,32 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
     if (name === 'terminal_connect') return connect(identity, args);
     const record = load(identity, args.connectionRef), entry = active.get(record.id);
     if (name === 'terminal_events' && (!entry || record.phase !== 'ready' && record.phase !== 'pending')) return envelopes(snapshot(record));
-    if (!entry) throw fail('disconnected');
+    // Local receipts remain readable on their original reference while offline.
+    // Never infer an outcome from another connection, even on the same device.
+    const {connectionRef: ignoredReference, ...receiptArgs} = args;
+    if (name === 'apps_operation_status') {
+      if (!uuid(args.originalOperationId) || typeof args.originalAction !== 'string') throw fail('invalid_operation_query');
+      const receipt = db.prepare('SELECT * FROM operations WHERE connection=? AND id=?').get(record.id, args.originalOperationId);
+      if (receipt && receipt.action.slice(5) !== args.originalAction) throw fail('operation_conflict');
+      if (receipt && ['succeeded','failed'].includes(receipt.phase)) return envelopes(JSON.parse(receipt.result));
+      if (!entry || record.phase !== 'ready') return envelopes({connectionRef:record.id,operationId:args.originalOperationId,
+        phase:'outcome_unknown',retryable:false,code:record.code||'disconnected',
+        message:'No completed receipt is available. Resume this original connectionRef, then query this operation again; do not replay it or switch connections.'});
+    }
+    if (durable.has(name) && !entry) {
+      if (!uuid(args.operationId)) throw fail('operation_id_required');
+      const receipt = db.prepare('SELECT * FROM operations WHERE connection=? AND id=?').get(record.id,args.operationId);
+      if (receipt) {
+        if (receipt.action !== name || receipt.digest !== digest(canonical(receiptArgs))) throw fail('operation_conflict');
+        if (['succeeded','failed'].includes(receipt.phase)) return envelopes(JSON.parse(receipt.result));
+        return envelopes({connectionRef:record.id,operationId:args.operationId,phase:'outcome_unknown',retryable:false,
+          code:record.code||'disconnected',message:'This operation was already accepted. Resume the original connection and query its result before any retry.'});
+      }
+      return envelopes({connectionRef:record.id,operationId:args.operationId,phase:'failed',retryable:false,
+        code:record.code||'disconnected',delivery:'not_sent',
+        message:'This call was not sent to the device. Resume this original connectionRef and inspect current state before retrying.'},{isError:true});
+    }
+    if (!entry) throw fail(record.code || 'disconnected');
     entry.lastCall = Date.now(); if (record.phase === 'ready') armIdle(entry);
     if (name === 'terminal_disconnect') {entry.shutdown(); active.delete(record.id); return envelopes(snapshot(load(identity, record.id)));}
     if (!['terminal_events', 'ai_report', 'ai_capabilities'].includes(name) && record.phase !== 'ready') throw fail('approval_required');
@@ -223,7 +248,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
       try {return await workspaceText.run(connectionRef, name, values, (tool, input) => entry.call('tools/call', {name: tool, arguments: input}));}
       catch (error) {
         const code=error.code||'workspace_transfer_failed';
-        const help={file_not_found:'This workspace file does not exist. Use expectedSha256:null only when intentionally creating it.',transfer_busy:'This connection has eight queued text transfers. Wait for their results before sending more.',invalid_data:'The device refused this workspace path. It may be missing or invalid; do not overwrite an existing file without its current SHA-256.'}[code]||'Workspace transfer did not complete.';
+        const help={workspace_conflict:'This transfer requires the current active workspace and unchanged revision. Read apps_state; do not switch the user’s workspace merely to inspect another App.',file_not_found:'This workspace file does not exist. Use expectedSha256:null only when intentionally creating it.',transfer_busy:'This connection has eight queued text transfers. Wait for their results before sending more.',invalid_data:'The device refused this workspace path. It may be missing or invalid; do not overwrite an existing file without its current SHA-256.'}[code]||'Workspace transfer did not complete.';
         return {isError:true,content:[{type:'text',text:code+': '+help}]};
       }
       finally {entry.requests--;}
