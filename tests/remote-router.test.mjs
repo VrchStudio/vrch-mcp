@@ -18,7 +18,7 @@ async function fixture({delayPublish = false, delayCommit = false, syntheticImag
   class DeviceSocket extends WebSocket {constructor(url) {assert.equal(new URL(url).origin, 'wss://registered.example'); super(remoteOrigin + new URL(url).pathname);}}
   const filename = join(directory, 'connections.sqlite'), key = randomBytes(32);
   const emitted = [];
-  const options = {filename, credentialDirectory: join(directory, 'credentials'), encryptionKey: key, waitMs, ...timers,
+  const options = {buildRevision:'f'.repeat(40), filename, credentialDirectory: join(directory, 'credentials'), encryptionKey: key, waitMs, ...timers,
     resolveRegisteredTarget: async url => {
       if (new URL(url).origin !== 'https://registered.example') throw Object.assign(Error('target_unavailable'), {code: 'target_unavailable'});
       return {origin: 'https://registered.example', deviceId: 'registered-130', WebSocketImpl: DeviceSocket};
@@ -68,6 +68,14 @@ test('explicit remote references isolate identities and clients, keep attempt re
     const guide = await f.call('apps_sdk_reference', {connectionRef:reference});
     assert(guide.structuredContent.result.text.includes('VrchApp.controls.onEvent'));
     assert(guide.structuredContent.result.text.includes('expectedVersion:old.version'));
+    const sdkBody=guide.structuredContent.result;
+    assert.equal(sdkBody.size,Buffer.byteLength(sdkBody.text));
+    assert.equal(sdkBody.sha256,createHash('sha256').update(sdkBody.text).digest('hex'));
+    assert.equal(sdkBody.serviceRevision,'f'.repeat(40));
+    assert.equal(sdkBody.reviewedPagesRevision,'c59300c5');
+    assert(tools.find(tool=>tool.name==='apps_sdk_reference').description.includes('camera'));
+    const wait=tools.find(tool=>tool.name==='terminal_events').inputSchema.properties.waitSeconds;
+    assert.equal(wait.maximum,20);assert(wait.description.includes('0..20'));
     const badConnect = await f.call('terminal_connect');
     assert.equal(badConnect.structuredContent.code, 'invalid_connection_arguments');
     assert(badConnect.structuredContent.message.includes('attemptId'));
@@ -333,14 +341,32 @@ test('offline receipts distinguish unsent calls from prior outcomes without cros
     assert.equal((await f.call('apps_operation_status',query)).structuredContent.phase,'succeeded');
     assert.equal((await f.call('apps_publish',args)).structuredContent.phase,'succeeded');
     assert.equal((await f.call('apps_publish',{...args,expectedRevision:'changed'})).structuredContent.code,'operation_conflict');
+    const offline=await f.call('ai_capabilities',{connectionRef:reference});
+    assert.equal(offline.structuredContent.resumable,true);assert.equal(offline.structuredContent.retryable,false);
+    assert(offline.structuredContent.message.includes('original connectionRef'));
+    const events=await f.call('terminal_events',{connectionRef:reference,waitSeconds:0});
+    assert.equal(events.structuredContent.resumable,true);
     const missing=await f.call('apps_operation_status',{...query,originalOperationId:randomUUID()});
     assert.equal(missing.structuredContent.phase,'outcome_unknown');
     assert.equal(missing.structuredContent.code,'idle_timeout');
     const unsent=await f.call('apps_publish',{...args,operationId:randomUUID()});
-    assert.equal(unsent.structuredContent.delivery,'not_sent');assert.equal(unsent.structuredContent.code,'idle_timeout');
+    assert.equal(unsent.structuredContent.delivery,'not_sent');assert.equal(unsent.structuredContent.resumable,true);assert.equal(unsent.structuredContent.code,'idle_timeout');
     assert.equal(f.remote.frames.filter(frame=>frame.action==='publish').length,1);
     assert.equal((await f.call('apps_operation_status',query,{...identity,principal:'other'})).structuredContent.code,'context_mismatch');
     await f.restart();
     assert.equal((await f.call('apps_operation_status',query)).structuredContent.phase,'succeeded');
   } finally {await f.close();}
+});
+
+
+test('revoked device authorization is not advertised as resumable', {skip:!supported}, async()=>{
+ const f=await fixture();
+ try{
+  const {reference}=await f.connect();f.remote.remove();
+  await until(()=>f.emitted.some(event=>event.type==='ended'&&event.code==='ai_revoked'));
+  const state=(await f.call('terminal_events',{connectionRef:reference,waitSeconds:0})).structuredContent;
+  assert.equal(state.phase,'removed');assert.equal(state.resumable,false);
+  assert.equal((await f.call('ai_capabilities',{connectionRef:reference})).structuredContent.resumable,false);
+  assert.equal((await f.call('terminal_connect',{connectionRef:reference,resume:true})).structuredContent.code,'approval_required');
+ }finally{await f.close();}
 });

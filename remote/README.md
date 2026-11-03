@@ -14,6 +14,8 @@ private command tools and terminal transcripts; this is not an OS sandbox or a
 project-only device grant. Device screenshots do not capture the browser Preview.
 
 Read a file with explicit `connectionRef`, `workspaceId` and relative `path`.
+The SDK reference also returns `size` (UTF-8 bytes), `sha256`, `reviewedPagesRevision` and `serviceRevision` (the image build commit, or `unknown` in an unlabelled local run). Its digest identifies the exact text independently of a cached client tool description.
+
 The source is `structuredContent.result.text`, alongside its verified SHA-256
 and size. The SDK reference body uses the same field. A short content block
 avoids duplicating large source text; structured-only hosts receive the full body. Write with that SHA as `expectedSha256` (null only
@@ -29,7 +31,7 @@ These text tools do not publish, save or run an App implicitly.
 
 The SDK reference includes camera frame lifetime/errors and negotiated settings, audio PCM/node APIs and input inventory, system/IMU response shapes, and the distinction between browser media consent and launch communication grants. Device availability is not analog plug detection or a physical health check.
 
-Completed operation receipts remain queryable using their original connectionRef while disconnected. A new modification refused before invocation reports delivery:not_sent and the retained disconnect reason; an already accepted unresolved operation remains outcome_unknown. Resume the original reference before querying the device. A new connection is not a substitute operation namespace, and no retry or reconnection is implicit.
+Completed operation receipts remain queryable using their original connectionRef while disconnected. A new modification refused before invocation reports delivery:not_sent and the retained disconnect reason; an already accepted unresolved operation remains outcome_unknown. A recoverable disconnected state reports `resumable:true` and explicit resume instructions; `retryable:false` still prohibits blind operation replay. Resume attempts continue to enforce the retained authorization. Resume the original reference before querying the device. A new connection is not a substitute operation namespace, and no retry or reconnection is implicit.
 
 Hosted capabilities reflect this adapter: terminal/private-command flags are false,
 general file purposes are empty, and workspaceText reports actual text transfer

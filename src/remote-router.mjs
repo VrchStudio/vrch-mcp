@@ -17,7 +17,7 @@ const durable = new Set(['apps_create', 'apps_open', 'apps_publish', 'apps_save'
 const hostedExcluded = new Set(['terminal_input', 'terminal_run_private', 'terminal_cancel_private_input', 'apps_file_export', 'apps_file_commit', 'apps_export_begin', 'apps_import_inspect', 'apps_import_commit']);
 const content = value => [{type: 'text', text: JSON.stringify(value)}];
 
-export async function createRemoteRouter({filename, credentialDirectory, encryptionKey, resolveRegisteredTarget, createClient = createAIClient, waitMs = 20000, pendingWaitMs = 600000, resultDrainMs = 45000, idleMs = 1800000}) {
+export async function createRemoteRouter({filename, credentialDirectory, encryptionKey, resolveRegisteredTarget, createClient = createAIClient, waitMs = 20000, pendingWaitMs = 600000, resultDrainMs = 45000, idleMs = 1800000, buildRevision = 'unknown'}) {
   if (typeof resolveRegisteredTarget !== 'function' || !Number.isInteger(waitMs) || waitMs < 1 || waitMs > 20000) throw fail('invalid_configuration');
   const parent = lstatSync(dirname(filename));
   if (!parent.isDirectory() || parent.isSymbolicLink() || parent.uid !== process.getuid() || (parent.mode & 0o077)) throw fail('unsafe_connection_storage');
@@ -45,7 +45,10 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
     const value = db.prepare('SELECT * FROM connections WHERE id=? AND owner=?').get(reference, owner(identity));
     if (!value) throw fail('context_mismatch'); return value;
   };
-  const snapshot = record => ({connectionRef: record.id, phase: record.phase, retryable: false,
+  const resumable = record => record.phase === 'disconnected' && ['transport_disconnected','idle_timeout','service_restarted','client_closed'].includes(record.code);
+  const recovery = record => ({resumable:resumable(record),...(resumable(record)?{message:'Resume this original connectionRef with terminal_connect({connectionRef,resume:true}); retryable:false prohibits automatic replay of the interrupted tool call. Resume still checks the retained device authorization.'}:{})});
+  const reference = {text:sdkReference,size:Buffer.byteLength(sdkReference),sha256:digest(sdkReference),reviewedPagesRevision:'c59300c5',serviceRevision:buildRevision};
+  const snapshot = record => ({connectionRef: record.id, phase: record.phase, retryable: false, ...recovery(record),
     ...(record.code ? {code: record.code} : {}), ...(record.phase === 'request_disconnected' ? {authorizationOutcome: 'unknown'} : {}),
     ...(record.phase === 'pending' ? {deadlineKnown: !!active.get(record.id)?.inviteDeadline, ...(active.get(record.id)?.inviteDeadline ? {inviteExpiresAt: active.get(record.id).inviteDeadline} : {})} : {}),
     ...(record.phase === 'ready' && record.capabilities ? {capabilities: hostedCapabilities(JSON.parse(record.capabilities))} : {})});
@@ -139,7 +142,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
   const catalogBridge = createTerminalMCP({toolCatalog: 'stable', send: message => replies.push(message)});
   await catalogBridge.receive({jsonrpc: '2.0', id: 1, method: 'initialize'});
   await catalogBridge.receive({jsonrpc: '2.0', id: 2, method: 'tools/list'});
-  const initialize = {...replies[0].result, serverInfo: {name: 'vrch-mcp-remote', version: '0.1.7-remote-dev'}};
+  const initialize = {...replies[0].result, serverInfo: {name: 'vrch-mcp-remote', version: '0.1.7-remote-dev' + (buildRevision === 'unknown' ? '' : '+' + buildRevision)}};
   initialize.instructions += '\nHosted tools always require the explicit connectionRef. Hosted App tools do not expose shell input or terminal transcripts. The existing device grant remains broader than a project sandbox; this tool filter does not create project-only authorization. Device screenshots are not web Preview screenshots; apps_state reports the Preview runtime errors. Use apps_read_text/apps_write_text for bounded UTF-8 source edits in the current workspace. Hosted general file staging is not available; never treat local file paths as uploadable. Pairing does not replace the human Invite AI and Allow AI decisions.';
   initialize.instructions += '\n' + hostedInstructions;
   const catalog = [...replies[1].result.tools.filter(tool => !tool.name.startsWith('file_') && !hostedExcluded.has(tool.name)), ...workspaceTextTools, sdkReferenceTool].map(original => {
@@ -152,7 +155,8 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
       tool.inputSchema.properties.connectionRef = {type: 'string'};
       tool.inputSchema.required = [...tool.inputSchema.required, 'connectionRef'];
       if (durable.has(tool.name)) {tool.inputSchema.properties.operationId = {type: 'string', format: 'uuid'}; if (!tool.inputSchema.required.includes('operationId')) tool.inputSchema.required.push('operationId');}
-      if (tool.name === 'terminal_events') {tool.inputSchema.properties.waitSeconds.maximum = 20; tool.description = 'Read this connection’s repeatable approval/connection state and queued events. waitSeconds defaults to 20 and cannot exceed 20; ending this wait never cancels approval or a sent operation.';}
+      if (tool.name === 'apps_operation_status') tool.inputSchema.properties.originalAction.description = 'Original durable action without apps_: create, open, publish, save, launch or write_text. Not control/interface input; keep the original connectionRef and operationId.';
+      if (tool.name === 'terminal_events') {tool.inputSchema.properties.waitSeconds.maximum = 20; tool.inputSchema.properties.waitSeconds.description = 'Optional; omit for 20 seconds. Valid range 0..20; returns early when events arrive.'; tool.description = 'Read this connection’s repeatable approval/connection state and queued events. waitSeconds defaults to 20 and cannot exceed 20; ending this wait never cancels approval or a sent operation.';}
     }
     return tool;
   });
@@ -206,8 +210,8 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
       if (receipt && receipt.action.slice(5) !== args.originalAction) throw fail('operation_conflict');
       if (receipt && ['succeeded','failed'].includes(receipt.phase)) return envelopes(JSON.parse(receipt.result));
       if (!entry || record.phase !== 'ready') return envelopes({connectionRef:record.id,operationId:args.originalOperationId,
-        phase:'outcome_unknown',retryable:false,code:record.code||'disconnected',
-        message:'No completed receipt is available. Resume this original connectionRef, then query this operation again; do not replay it or switch connections.'});
+        phase:'outcome_unknown',retryable:false,resumable:resumable(record),code:record.code||'disconnected',
+        message:resumable(record)?'No completed receipt is available. Resume this original connectionRef, then query this operation again; do not replay it or switch connections.':'No completed receipt is available and this connection is not resumable now. Retain the original operation identity; another connection cannot prove its outcome.'});
     }
     if (durable.has(name) && !entry) {
       if (!uuid(args.operationId)) throw fail('operation_id_required');
@@ -215,18 +219,18 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
       if (receipt) {
         if (receipt.action !== name || receipt.digest !== digest(canonical(receiptArgs))) throw fail('operation_conflict');
         if (['succeeded','failed'].includes(receipt.phase)) return envelopes(JSON.parse(receipt.result));
-        return envelopes({connectionRef:record.id,operationId:args.operationId,phase:'outcome_unknown',retryable:false,
-          code:record.code||'disconnected',message:'This operation was already accepted. Resume the original connection and query its result before any retry.'});
+        return envelopes({connectionRef:record.id,operationId:args.operationId,phase:'outcome_unknown',retryable:false,resumable:resumable(record),
+          code:record.code||'disconnected',message:resumable(record)?'This operation was already accepted. Resume the original connection and query its result before any retry.':'This operation was already accepted but this connection cannot resume now. Do not infer its outcome or replay it.'});
       }
-      return envelopes({connectionRef:record.id,operationId:args.operationId,phase:'failed',retryable:false,
+      return envelopes({connectionRef:record.id,operationId:args.operationId,phase:'failed',retryable:false,resumable:resumable(record),
         code:record.code||'disconnected',delivery:'not_sent',
-        message:'This call was not sent to the device. Resume this original connectionRef and inspect current state before retrying.'},{isError:true});
+        message:resumable(record)?'This call was not sent to the device. Resume this original connectionRef and inspect current state before retrying.':'This call was not sent to the device. This connection cannot resume now; inspect its authorization state before another action.'},{isError:true});
     }
-    if (!entry) throw fail(record.code || 'disconnected');
+    if (!entry) return envelopes({connectionRef:record.id,phase:'failed',retryable:false,code:record.code||'disconnected',...recovery(record)},{isError:true});
     entry.lastCall = Date.now(); if (record.phase === 'ready') armIdle(entry);
     if (name === 'terminal_disconnect') {entry.shutdown(); active.delete(record.id); return envelopes(snapshot(load(identity, record.id)));}
     if (!['terminal_events', 'ai_report', 'ai_capabilities'].includes(name) && record.phase !== 'ready') throw fail('approval_required');
-    if (name === 'apps_sdk_reference') return envelopes({connectionRef: record.id, phase:'succeeded', retryable:false, result:{text:sdkReference}}, {content:content({reference:'My Apps SDK v1',body:'structuredContent.result.text'})});
+    if (name === 'apps_sdk_reference') return envelopes({connectionRef: record.id, phase:'succeeded', retryable:false, result:reference}, {content:content({reference:'My Apps SDK v1',body:'structuredContent.result.text'})});
     const {connectionRef, ...values} = args;
     if (name === 'terminal_events' && (typeof (values.waitSeconds ?? 20) !== 'number' || !Number.isFinite(values.waitSeconds ?? 20) || (values.waitSeconds ?? 20) < 0 || (values.waitSeconds ?? 20) > 20)) throw fail('invalid_wait');
     const isText = name === 'apps_read_text' || name === 'apps_write_text';

@@ -20,7 +20,7 @@ if (sdkValidation) clients.set(issuer + '/sdk-client.json', {tokenEndpointAuthMe
 if (!clients.size) throw Error('No verified OAuth client is available.');
 const auth = createPairingAuthorization({filename: join(directory, 'auth.sqlite'), issuer, resource, clients,
   verifyPairing: createDevicePairingVerifier({publicKey: readFileSync(required('VRCH_MCP_DEVICE_VERIFY_KEY_FILE')), issuer: required('VRCH_MCP_DEVICE_ISSUER')})});
-const router = await createRemoteRouter({filename: join(directory, 'connections.sqlite'), credentialDirectory: join(directory, 'credentials'), encryptionKey: key,
+const router = await createRemoteRouter({buildRevision:process.env.VRCH_MCP_BUILD || 'unknown',filename: join(directory, 'connections.sqlite'), credentialDirectory: join(directory, 'credentials'), encryptionKey: key,
   resolveRegisteredTarget: createRegisteredTargetResolver({directoryURL: required('VRCH_MCP_DIRECTORY_URL')})});
 const authMetadata = auth.metadata;
 auth.metadata = () => ({...authMetadata(), client_id_metadata_document_supported: true});

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Identify SDK reference content and explain how to resume a disconnected connection.
+- Clarify hardware contracts and hosted event wait limits.
+
 - Explain camera, audio, system and IMU APIs directly to web AI clients.
 - Read completed operation receipts while offline and distinguish calls not sent.
 

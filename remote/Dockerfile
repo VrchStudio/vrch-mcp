@@ -7,5 +7,5 @@ COPY remote/*.mjs ./remote/
 ARG COMMIT=unknown
 LABEL org.opencontainers.image.revision="${COMMIT}"
 USER node
-ENV VRCH_MCP_PORT=18916 VRCH_MCP_DATA=/data
+ENV VRCH_MCP_PORT=18916 VRCH_MCP_DATA=/data VRCH_MCP_BUILD=${COMMIT}
 CMD ["node", "remote/server.mjs"]
