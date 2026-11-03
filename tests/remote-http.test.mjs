@@ -69,6 +69,12 @@ test('real HTTP OAuth pairing and official SDK Streamable HTTP use the shared MC
     assert.equal(await sdkAuthorize(provider, {serverUrl: resource, fetchFn: fetchSDK}), 'REDIRECT');
     const sdkStart = await call(authorizationURL.pathname + authorizationURL.search);
     const sdkPair = sdkStart.headers.location, sdkCookie = sdkStart.headers['set-cookie'][0].split(';')[0];
+    const codePage=await call(sdkPair,{headers:{Cookie:sdkCookie}});
+    assert.equal(codePage.status,200);
+    assert(codePage.text.includes('id="pairingCode"'));
+    assert(codePage.text.includes('value="'+sdkPair.split('/').at(-1)+'"'));
+    assert(codePage.text.includes('Connect AI service'));
+    assert(!codePage.text.includes('vrch-110')&&!codePage.text.includes('vrch-130')&&!codePage.text.includes('<a '));
     const sdkChallenge = (await call(sdkPair + '/challenge')).json();
     assert.equal(sdkChallenge.clientId, issuer + '/sdk-client.json');
     await call(sdkPair + '/approve', json({deviceId: 'fixture-130', signature: sign(null, Buffer.from(JSON.stringify({...sdkChallenge, decision: 'approve'})), keys.privateKey).toString('base64url')}));

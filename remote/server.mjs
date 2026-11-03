@@ -24,8 +24,7 @@ const router = await createRemoteRouter({filename: join(directory, 'connections.
   resolveRegisteredTarget: createRegisteredTargetResolver({directoryURL: required('VRCH_MCP_DIRECTORY_URL')})});
 const authMetadata = auth.metadata;
 auth.metadata = () => ({...authMetadata(), client_id_metadata_document_supported: true});
-const pairingDevices = JSON.parse(process.env.VRCH_MCP_PAIRING_DEVICES || '[]');
-const server = createServer(createRemoteHTTPHandler({auth, resource, handleMCP: router.handle, pairingDevices, sdkValidation}));
+const server = createServer(createRemoteHTTPHandler({auth, resource, handleMCP: router.handle, sdkValidation}));
 server.requestTimeout = 30000; server.headersTimeout = 10000;
 server.listen(Number(process.env.VRCH_MCP_PORT || 18916), '127.0.0.1', () => process.stdout.write('VRCH MCP listening on loopback.\n'));
 let stopping = false;

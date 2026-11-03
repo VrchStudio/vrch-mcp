@@ -18,7 +18,6 @@ services:
       VRCH_MCP_DEVICE_ISSUER: ${VRCH_MCP_DEVICE_ISSUER:?Set the Device Manager issuer}
       VRCH_MCP_DIRECTORY_URL: ${VRCH_MCP_DIRECTORY_URL:?Set the trusted directory URL}
       VRCH_MCP_SDK_VALIDATION: ${VRCH_MCP_SDK_VALIDATION:-false}
-      VRCH_MCP_PAIRING_DEVICES: ${VRCH_MCP_PAIRING_DEVICES:-[]}
     volumes:
       - ${VRCH_MCP_STATE_DIR:?Set a private persistent directory}:/data
       - ${VRCH_MCP_RECOVERY_KEY_FILE:?Set the private recovery key file}:/run/secrets/recovery-key:ro

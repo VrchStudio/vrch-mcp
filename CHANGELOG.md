@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Pair through the current My Apps device without a fixed host list.
+
 - Deliver source text, SDK help and screenshot details to structured-result clients.
 - Queue parallel text reads and keep hosted control gestures in order.
 

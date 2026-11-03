@@ -68,11 +68,15 @@ context. Its loopback listener is 18917; the service listens on 18916. Publish
 Access logging is disabled on this OAuth route to avoid persisting codes.
 The service validates Host and Origin itself; the public edge must retain Origin.
 
-`VRCH_MCP_PAIRING_DEVICES` is a JSON array of trusted `{name,origin}` objects for
-the human pairing page. These links do not authorize or select a tool connection.
-Every tool connection still needs its original invitation and human Allow AI;
-subsequent tools require the explicit connectionRef. Reconnecting ChatGPT creates
-a new paired identity; it does not inherit another connection's credentials.
+First pairing uses the code shown on the OAuth page. In the already-connected
+My Apps page, choose Connect AI service from its menu, paste the code and approve.
+The code is the existing short-lived pairing request ID; there is no account or
+short-code database. The current device's helper resolves its configured service
+origin and uses the existing signed proof. Legacy pairing links remain valid.
+No fixed device list or per-device MCP service configuration is used.
+Every App connection still needs its original invitation and human Allow AI;
+subsequent tools require the explicit connectionRef. Re-pairing a connector creates
+a new identity; ordinary device switching does not require re-pairing.
 
 Before changing SG, record the current affected image/config and preserve its
 private state. Recreate only the MCP service and, when its new attestation route
