@@ -132,6 +132,7 @@ test('real HTTP OAuth pairing and official SDK Streamable HTTP use the shared MC
       }
     });
     await sdk.connect(transport);
+    assert.equal(sdk.getServerVersion().icons[0].src, issuer + '/assets/vrch-logo-f4e2d43e2ea1.png');
     const catalog = await sdk.listTools(); assert(catalog.tools.some(tool => tool.name === 'apps_state')); assert(catalog.tools.some(tool => tool.name === 'apps_publish'));
     assert(dispatched >= 2);
     const connected = await sdk.callTool({name: 'terminal_connect', arguments: {url: 'https://registered.example/apps/ai?invite=fixture', attemptId: (await import('node:crypto')).randomUUID()}});

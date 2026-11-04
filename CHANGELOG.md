@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Show the current vrch.io logo in remote connector metadata and pairing tabs.
+
 - Keep parallel AI authorization tabs independent and simplify pairing guidance.
 
 - Accept Gemini’s complete set of Google OAuth callback addresses.

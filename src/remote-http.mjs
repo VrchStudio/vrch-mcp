@@ -1,6 +1,7 @@
 // Standard HTTP/OAuth boundary. Tool execution and verified device pairing stay
 // in their own adapters. No bare URL, cookie or MCP session authenticates a tool.
 import {randomBytes} from 'node:crypto';
+import {logo, logoPath, logoIcons} from './remote-branding.mjs';
 const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const cookies = header => Object.fromEntries(String(header || '').split(';').map(part => part.trim().split('=')));
 const oauthErrors = new Set(['invalid_request', 'invalid_client_metadata', 'invalid_client', 'invalid_redirect_uri', 'invalid_grant', 'invalid_target', 'unsupported_grant_type', 'invalid_token', 'pairing_unavailable', 'invalid_pairing_proof', 'pairing_conflict', 'invalid_browser_session']);
@@ -42,6 +43,14 @@ export function createRemoteHTTPHandler({auth, resource, handleMCP, sdkValidatio
         send(response, 403, {error: 'forbidden'}); return;
       }
       const url = new URL(request.url, origin), path = url.pathname;
+      if (['GET','HEAD'].includes(request.method) && path === logoPath) {
+        response.writeHead(200, {'Content-Type':'image/png', 'Content-Length':logo.length,
+          'Cache-Control':'public, max-age=31536000, immutable', 'X-Content-Type-Options':'nosniff'});
+        response.end(request.method === 'HEAD' ? undefined : logo); return;
+      }
+      if (['GET','HEAD'].includes(request.method) && path === '/favicon.ico') {
+        send(response, 302, '', {Location:logoPath}); return;
+      }
       if (sdkValidation && request.method === 'GET' && path === '/sdk-client.json') {
         send(response, 200, {client_id: origin + '/sdk-client.json', client_name: 'VRCH SDK validation',
           redirect_uris: [origin + '/sdk-callback'], token_endpoint_auth_method: 'none',
@@ -52,7 +61,7 @@ export function createRemoteHTTPHandler({auth, resource, handleMCP, sdkValidatio
           {'Content-Security-Policy': "default-src 'none'; base-uri 'none'; frame-ancestors 'none'"}); return;
       }
       if (request.method === 'GET' && path === protectedPath) {
-        send(response, 200, {resource, authorization_servers: [metadata.issuer], scopes_supported: ['vrch:mcp'], bearer_methods_supported: ['header']}); return;
+        send(response, 200, {resource, resource_name: 'Vrch Synth', resource_logo_uri: origin + logoPath, authorization_servers: [metadata.issuer], scopes_supported: ['vrch:mcp'], bearer_methods_supported: ['header']}); return;
       }
       if (request.method === 'GET' && path === '/.well-known/oauth-authorization-server') {send(response, 200, metadata); return;}
       if (request.method === 'POST' && path === '/register') {
@@ -104,10 +113,10 @@ export function createRemoteHTTPHandler({auth, resource, handleMCP, sdkValidatio
           auth.challenge(id);
           if (!browserSecret(request, id)) {send(response, 403, {error: 'invalid_browser_session'}); return;}
           const nonce = randomBytes(24).toString('base64url');
-          send(response, 200, '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connect vrch</title>'
+          send(response, 200, '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connect vrch</title><link rel="icon" type="image/png" href="' + logoPath + '">'
             + '<style nonce="' + nonce + '">:root{color-scheme:dark;font:16px/1.5 system-ui,sans-serif;background:#101010;color:#f2f2f2}*{box-sizing:border-box}body{margin:0;padding:48px 20px;display:grid;min-height:100vh;place-items:center}main{width:min(100%,480px);padding:32px;border:1px solid #444;background:#181818}h1{font-size:26px;line-height:1.2;margin:0 0 18px}p{color:#bbb}label{display:block;margin:24px 0 8px}input,button{width:100%;min-height:44px;border:1px solid #555;border-radius:0;color:inherit;background:#101010;padding:10px 12px;font:inherit}input{font-family:monospace}button{margin-top:12px;cursor:pointer}button:hover,button:focus-visible{background:#303030;outline:2px solid #aaa;outline-offset:2px}button:disabled{opacity:.5;cursor:default}#status{min-height:24px;margin-bottom:0}@media(max-width:480px){body{padding:20px 16px}main{padding:24px}}</style><main><h1>Connect vrch</h1><p>Paste this code in My Apps to authorize the connection.</p><label for="pairingCode">Pairing code</label><input id="pairingCode" readonly autocomplete="off" spellcheck="false" value="' + escape(id) + '"><button id="copyCode" type="button">Copy code</button><p id="status" role="status">Waiting for your approval in My Apps.</p></main>'
             + '<script nonce="' + nonce + '">const code=document.getElementById("pairingCode"),copy=document.getElementById("copyCode");code.onclick=()=>code.select();copy.onclick=async()=>{try{await navigator.clipboard.writeText(code.value);copy.textContent="Copied";}catch(_){code.focus();code.select();copy.textContent="Select and copy the code";}};let stopped=false;async function check(){if(stopped)return;try{const r=await fetch(location.pathname+"/status",{method:"POST"});const v=await r.json();if(!r.ok){stopped=true;copy.disabled=true;document.getElementById("status").textContent="Pairing unavailable. Start the connection again.";return;}if(v.phase==="authorized"){stopped=true;location.replace(v.redirect);return;}if(v.phase==="connected"){stopped=true;copy.disabled=true;document.getElementById("status").textContent="Connected. Return to your AI client.";return;}}catch(_){}setTimeout(check,1500);}check();</script>',
-            {'Content-Security-Policy': "default-src 'none'; script-src 'nonce-" + nonce + "'; style-src 'nonce-" + nonce + "'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"}); return;
+            {'Content-Security-Policy': "default-src 'none'; script-src 'nonce-" + nonce + "'; style-src 'nonce-" + nonce + "'; img-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"}); return;
         }
         send(response, 405, {error: 'method_not_allowed'}); return;
       }
@@ -140,6 +149,10 @@ export function createRemoteHTTPHandler({auth, resource, handleMCP, sdkValidatio
         // The execution adapter must retain sent operations if the HTTP peer
         // closes. The socket is not an authorization or cancellation scope.
         const reply = await handleMCP(identity, message);
+        if (message.method === 'initialize' && reply?.result?.serverInfo) {
+          send(response, 200, {...reply, result: {...reply.result,
+            serverInfo: {...reply.result.serverInfo, title: 'Vrch Synth', icons: logoIcons(origin)}}}); return;
+        }
         send(response, 200, reply); return;
       }
       send(response, 404, {error: 'not_found'});
