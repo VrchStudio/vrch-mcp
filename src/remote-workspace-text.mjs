@@ -43,7 +43,7 @@ export function createWorkspaceText(directory) {
   // This directory belongs to the single hosted router. Files are temporary
   // transfer payloads, not drafts or operation journals, and never recovery data.
   for (const entry of readdirSync(directory, {withFileTypes: true})) {
-    if (!/^text-[A-Za-z0-9]{6}$/.test(entry.name) || !entry.isDirectory()) continue;
+    if (!/^(?:text|preview)-[A-Za-z0-9]{6}$/.test(entry.name) || !entry.isDirectory()) continue;
     const path = join(directory, entry.name), prior = lstatSync(path);
     if (prior.uid === process.getuid() && !(prior.mode & 0o077)) rmSync(path, {recursive: true});
   }

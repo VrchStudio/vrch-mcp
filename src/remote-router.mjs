@@ -4,6 +4,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {createHash, randomBytes, randomUUID} from 'node:crypto';
 import {lstatSync, chmodSync} from 'node:fs';
 import {dirname, join} from 'node:path';
+import {previewTools,capturePreview} from './remote-preview.mjs';
 import {createWorkspaceText, validateWorkspaceText, workspaceTextTools} from './remote-workspace-text.mjs';
 import {hostedCapabilities, hostedInstructions, sdkReference, sdkReferenceTool} from './remote-guidance.mjs';
 import {createAIClient} from './client.mjs';
@@ -13,7 +14,7 @@ const uuid = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-
 const fail = code => Object.assign(Error(code), {code});
 const canonical = value => JSON.stringify(value, (_key, child) => child && !Array.isArray(child) && typeof child === 'object' ? Object.fromEntries(Object.keys(child).sort().map(key => [key, child[key]])) : child);
 const digest = value => createHash('sha256').update(value).digest('hex');
-const durable = new Set(['apps_create', 'apps_open', 'apps_publish', 'apps_save', 'apps_import_inspect', 'apps_import_commit', 'apps_file_commit', 'apps_launch', 'apps_write_text']);
+const durable = new Set(['apps_create', 'apps_open', 'apps_publish_preview', 'apps_publish', 'apps_save', 'apps_import_inspect', 'apps_import_commit', 'apps_file_commit', 'apps_launch', 'apps_write_text']);
 const hostedExcluded = new Set(['apps_file_export', 'apps_file_commit', 'apps_export_begin', 'apps_import_inspect', 'apps_import_commit']);
 const content = value => [{type: 'text', text: JSON.stringify(value)}];
 
@@ -121,6 +122,8 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
             .replace('Human screenshots arrive automatically as native image content in terminal tool results.', 'Human-shared screenshots are queued for terminal_events.')};
           if (event.type !== 'data' || entry.terminalReadable) options.emit(event);
         } catch {queueMicrotask(() => entry.shutdown());}}});
+      entry.appRequest = (...args) => client.appsRequest(...args);
+      entry.downloadPreview = (path,ticket) => client.downloadFile(path,{purpose:'app-preview',resource:{ticket},maxBytes:1024*1024});
       const capabilities = client.capabilities;
       client.capabilities = () => hostedCapabilities(capabilities());
       const input = client.input;
@@ -147,7 +150,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
   const initialize = {...replies[0].result, serverInfo: {name: 'vrch-mcp-remote', version: '0.1.7-remote-dev' + (buildRevision === 'unknown' ? '' : '+' + buildRevision)}};
   initialize.instructions += '\nHosted tools always require the explicit connectionRef. Hosted terminal tools reuse the device terminal capability, current control owner, Private Input and approval checks; this remains an ordinary device user shell, not a project-only sandbox. Read terminal_events for terminal output. Sending input does not confirm execution; never replay shell input after an uncertain response. Device screenshots are not web Preview screenshots; apps_state reports the Preview runtime errors. Use apps_read_text/apps_write_text for bounded UTF-8 source edits in the current workspace. Hosted general file staging is not available; never treat local file paths as uploadable. Pairing does not replace the human Invite AI and Allow AI decisions.';
   initialize.instructions += '\n' + hostedInstructions;
-  const catalog = [...replies[1].result.tools.filter(tool => !tool.name.startsWith('file_') && !hostedExcluded.has(tool.name)), ...workspaceTextTools, sdkReferenceTool].map(original => {
+  const catalog = [...replies[1].result.tools.filter(tool => !tool.name.startsWith('file_') && !hostedExcluded.has(tool.name)), ...workspaceTextTools, sdkReferenceTool, ...previewTools].map(original => {
     const tool = structuredClone(original);
     tool.outputSchema = {type: 'object', properties: {connectionRef: {type: 'string'}, phase: {type: 'string'}, retryable: {type: 'boolean'}}, required: ['phase', 'retryable'], additionalProperties: true};
     if (tool.name === 'terminal_connect') {
@@ -157,7 +160,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
       tool.inputSchema.properties.connectionRef = {type: 'string'};
       tool.inputSchema.required = [...tool.inputSchema.required, 'connectionRef'];
       if (durable.has(tool.name)) {tool.inputSchema.properties.operationId = {type: 'string', format: 'uuid'}; if (!tool.inputSchema.required.includes('operationId')) tool.inputSchema.required.push('operationId');}
-      if (tool.name === 'apps_operation_status') tool.inputSchema.properties.originalAction.description = 'Original durable action without apps_: create, open, publish, save, launch or write_text. Not control/interface input; keep the original connectionRef and operationId.';
+      if (tool.name === 'apps_operation_status') tool.inputSchema.properties.originalAction.description = 'Original durable action without apps_: create, open, publish_preview, publish, save, launch or write_text. Not control/interface input; keep the original connectionRef and operationId.';
       if (tool.name === 'terminal_events') {tool.inputSchema.properties.waitSeconds.maximum = 20; tool.inputSchema.properties.waitSeconds.description = 'Optional; omit for 20 seconds. Valid range 0..20; returns early when events arrive.'; tool.description = 'Read this connection’s repeatable approval/connection state and queued events. waitSeconds defaults to 20 and cannot exceed 20; ending this wait never cancels approval or a sent operation.';}
     }
     return tool;
@@ -238,6 +241,12 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
     const isText = name === 'apps_read_text' || name === 'apps_write_text';
     if (isText) validateWorkspaceText(name, values);
     const invoke = async () => {
+      if (name === 'apps_preview_snapshot') return capturePreview(entry, values, dirname(filename));
+      if (name === 'apps_publish_preview') {
+        try {const {workspaceId,expectedRevision,operationId}=values;
+          return {content:content(await entry.appRequest('publish_preview',{}, {workspaceId,expectedRevision,operationId}))};
+        } catch (error) {return {isError:true,content:content({code:error.code||'publish_failed',message:error.message})};}
+      }
       if (!isText) {
         if (!['apps_control','apps_interface_input','apps_host_input'].includes(name)) return entry.call('tools/call',{name,arguments:values});
         // Preserve complete gestures in call order. The device input sequence
