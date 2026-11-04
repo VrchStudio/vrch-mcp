@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Diagnose rejected connector registrations without logging secrets or account paths.
+
 - Register Google web connectors automatically without manually entering OAuth credentials.
 
 - Use the approved device terminal from web AI with existing control and privacy rules.

@@ -5,7 +5,7 @@ const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;',
 const cookies = header => Object.fromEntries(String(header || '').split(';').map(part => part.trim().split('=')));
 const oauthErrors = new Set(['invalid_request', 'invalid_client_metadata', 'invalid_client', 'invalid_redirect_uri', 'invalid_grant', 'invalid_target', 'unsupported_grant_type', 'invalid_token', 'pairing_unavailable', 'invalid_pairing_proof', 'pairing_conflict', 'invalid_browser_session']);
 
-export function createRemoteHTTPHandler({auth, resource, handleMCP, sdkValidation = false}) {
+export function createRemoteHTTPHandler({auth, resource, handleMCP, sdkValidation = false, onRegistrationFailure = () => {}}) {
   const target = new URL(resource), origin = target.origin, metadata = auth.metadata();
   if (typeof handleMCP !== 'function' || new URL(metadata.issuer).origin !== origin) throw Error('Invalid remote HTTP configuration.');
   const protectedPath = '/.well-known/oauth-protected-resource' + (target.pathname === '/' ? '' : target.pathname);
@@ -54,7 +54,28 @@ export function createRemoteHTTPHandler({auth, resource, handleMCP, sdkValidatio
       if (request.method === 'POST' && path === '/register') {
         if (request.headers['content-type']?.split(';')[0] !== 'application/json') {send(response, 415, {error: 'invalid_request'}); return;}
         let value; try {value = JSON.parse(await body(request, 8192));} catch {send(response, 400, {error: 'invalid_client_metadata'}); return;}
-        send(response, 201, auth.register(value)); return;
+        try {send(response, 201, auth.register(value));}
+        catch (error) {
+          // Summarize schema/URL shape only: never log client secrets, account
+          // paths, query values, tokens or request bodies.
+          const redirects = value?.redirect_uris;
+          const diagnostic = {code: oauthErrors.has(error.code) ? error.code : 'registration_failed',
+            redirectType: Array.isArray(redirects) ? 'array' : typeof redirects,
+            redirectCount: Array.isArray(redirects) ? redirects.length : null,
+            duplicateRedirects: Array.isArray(redirects) ? new Set(redirects).size !== redirects.length : false,
+            redirects: Array.isArray(redirects) ? redirects.slice(0,16).map(v => {
+              try {const u=new URL(v); return {protocol:u.protocol,host:u.hostname,port:u.port,
+                pathFamily:/^\/(r|a)\//.exec(u.pathname)?.[1] || 'other',pathLength:u.pathname.length,
+                query:!!u.search,fragment:!!u.hash,credentials:!!(u.username||u.password),canonical:v===u.href};}
+              catch {return {invalidURL:true};}
+            }) : [],
+            method: value?.token_endpoint_auth_method === undefined ? 'default' : ['none','client_secret_basic','client_secret_post'].includes(value.token_endpoint_auth_method) ? value.token_endpoint_auth_method : 'other',
+            grantTypes: Array.isArray(value?.grant_types) ? value.grant_types.map(v=>['authorization_code','refresh_token'].includes(v)?v:'other').slice(0,8) : 'default-or-invalid',
+            scope: value?.scope === undefined ? 'default' : value.scope === 'vrch:mcp' ? 'supported' : 'other'};
+          try {onRegistrationFailure(diagnostic);} catch {}
+          throw error;
+        }
+        return;
       }
       if (request.method === 'GET' && path === '/authorize') {
         const started = auth.begin(objectParams(url.searchParams));

@@ -62,7 +62,8 @@ test('DCR client authentication, PKCE, refresh/revoke and existing grants surviv
 
 test('official SDK discovers DCR over real HTTP and completes PKCE with generated client credentials', {skip:!supported},async()=>{
  const auth=createPairingAuthorization({...config,filename:':memory:'});let calls=0;
- const handler=createRemoteHTTPHandler({auth,resource,handleMCP:async()=>{calls++;return{};}}),server=createServer(handler);
+ const diagnostics=[];
+ const handler=createRemoteHTTPHandler({auth,resource,handleMCP:async()=>{calls++;return{};},onRegistrationFailure:value=>diagnostics.push(value)}),server=createServer(handler);
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  const address='http://127.0.0.1:'+server.address().port;
  const fetchFn=(url,init={})=>new Promise((resolve,reject)=>{
@@ -89,6 +90,9 @@ test('official SDK discovers DCR over real HTTP and completes PKCE with generate
    assert.throws(()=>auth.authenticate(tokens.access_token));
   }
   assert.equal(calls,0,'Registering and linking alone execute no device tool');
+  const rejected=await fetchFn(issuer+'/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({redirect_uris:['https://evil.example/r/private-account?secret=private-query'],client_secret:'private-secret'})});
+  assert.equal(rejected.status,400);assert.equal(diagnostics.at(-1).redirects[0].host,'evil.example');
+  for(const secret of ['private-account','private-query','private-secret'])assert(!JSON.stringify(diagnostics).includes(secret));
   assert.equal((await fetchFn(issuer+'/register',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,400);
   assert.equal((await fetchFn(issuer+'/register',{method:'POST',headers:{'Content-Type':'application/json'},body:'x'.repeat(8193)})).status,400);
  }finally{auth.close();await new Promise(resolve=>server.close(resolve));}
