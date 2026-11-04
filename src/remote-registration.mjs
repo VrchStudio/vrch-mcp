@@ -16,8 +16,10 @@ export function createDynamicRegistration(db, now) {
     id TEXT PRIMARY KEY, metadata TEXT NOT NULL, secret_hash TEXT, created INTEGER NOT NULL);`);
   function register(value) {
     if (!value || Array.isArray(value) || typeof value !== 'object') throw fail('invalid_client_metadata');
+    // The HTTP body bound limits list size; Google submits all six official
+    // callback variants together, not only the URL shown in its dialog.
     const redirects = value.redirect_uris;
-    if (!Array.isArray(redirects) || !redirects.length || redirects.length > 4 || !redirects.every(googleRedirect)
+    if (!Array.isArray(redirects) || !redirects.length || !redirects.every(googleRedirect)
         || new Set(redirects).size !== redirects.length) throw fail('invalid_redirect_uri');
     const method = value.token_endpoint_auth_method ?? 'client_secret_basic';
     if (!['none', 'client_secret_basic', 'client_secret_post'].includes(method)) throw fail('invalid_client_metadata');

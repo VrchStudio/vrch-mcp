@@ -13,7 +13,8 @@ const issuer='https://mcp-sg.example',resource=issuer+'/synth',redirect='https:/
 const staticId='https://chatgpt.com/oauth/client.json';
 const clients=new Map([[staticId,{tokenEndpointAuthMethod:'none',redirectUris:['https://chatgpt.com/connector_platform_oauth_redirect']}]]);
 const config={issuer,resource,clients,verifyPairing:async(expected,proof)=>{assert.equal(proof.challenge,expected.challenge);return{deviceId:'fixture-device'};}};
-const registration=method=>({redirect_uris:[redirect],token_endpoint_auth_method:method,grant_types:['authorization_code','refresh_token'],response_types:['code'],scope:'vrch:mcp'});
+const googleRedirects=['r','a'].flatMap(path=>['oauth-redirect-sandbox.googleusercontent.com','oauth-redirect-test.googleusercontent.com','oauth-redirect.googleusercontent.com'].map(host=>`https://${host}/${path}/user_bound_custom-mcp-fixture-mcp-sg_vrch_ai`));
+const registration=method=>({redirect_uris:googleRedirects,token_endpoint_auth_method:method,grant_types:['authorization_code','refresh_token'],response_types:['code'],scope:'vrch:mcp'});
 const verifier=()=>randomBytes(32).toString('base64url');
 const params=(id,proof,uri=redirect)=>({client_id:id,redirect_uri:uri,resource,scope:'vrch:mcp',response_type:'code',state:'fixture-state',code_challenge_method:'S256',code_challenge:createHash('sha256').update(proof).digest('base64url')});
 async function code(auth,id,secret,uri=redirect){const start=auth.begin(params(id,secret,uri));await auth.approve(start.id,{challenge:auth.challenge(start.id).challenge});return new URL(auth.finish(start.id,start.browserSecret).redirect).searchParams.get('code');}
@@ -73,6 +74,14 @@ test('official SDK discovers DCR over real HTTP and completes PKCE with generate
   });req.on('error',reject);req.end(init.body?.toString()||'');
  });
  try{
+  // Match the observed Gemini request: six callbacks, secret_post, no scope.
+  const requestMetadata={...registration('client_secret_post')};delete requestMetadata.scope;
+  const registered=await fetchFn(issuer+'/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(requestMetadata)});
+  assert.equal(registered.status,201);
+  const six=await registered.json();assert.deepEqual(six.redirect_uris,googleRedirects);assert.equal(six.scope,'vrch:mcp');
+  assert.throws(()=>auth.begin(params(six.client_id,verifier(),redirect+'-not-registered')),{code:'invalid_redirect_uri'});
+  const untrusted=await fetchFn(issuer+'/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...requestMetadata,redirect_uris:[...googleRedirects,'https://evil.example/callback']})});
+  assert.equal(untrusted.status,400);
   for(const method of ['none','client_secret_basic','client_secret_post']){
    let info,tokens,proof,authorization;
    const provider={redirectUrl:redirect,clientMetadata:registration(method),clientInformation:()=>info,saveClientInformation:v=>{info=v;},tokens:()=>tokens,saveTokens:v=>{tokens=v;},codeVerifier:()=>proof,saveCodeVerifier:v=>{proof=v;},redirectToAuthorization:url=>{authorization=url;},state:()=> 'fixture-state'};

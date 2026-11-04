@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Accept Gemini’s complete set of Google OAuth callback addresses.
+
 - Diagnose rejected connector registrations without logging secrets or account paths.
 
 - Register Google web connectors automatically without manually entering OAuth credentials.

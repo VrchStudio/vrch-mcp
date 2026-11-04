@@ -137,7 +137,8 @@ client names and metadata URLs are not trusted identities or fetch targets.
 Client secrets are returned once and stored only as SHA-256 hashes. Registration
 does not grant device access: PKCE, resource binding, human device pairing and
 Invite/Allow still apply. Existing grants and connectionRefs are not migrated.
-Registration bodies are limited to 8 KiB and four callbacks; existing edge rate
+Registration bodies are limited to 8 KiB; the complete six-callback Google list
+is accepted without a separate callback-count cap. Existing edge rate
 limits apply. Abandoned registrations older than a day can be removed, preserving
 clients referenced by grants or unexpired pairings; total retained clients are
 bounded at 10,000. Google persistent-linking refresh semantics are not silently
