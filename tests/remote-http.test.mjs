@@ -152,5 +152,5 @@ test('real HTTP OAuth pairing and official SDK Streamable HTTP use the shared MC
     await call('/revoke', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, value: new URLSearchParams({client_id: clientId, token: tokens.refresh_token}).toString()});
     const denied = await call('/synth', {...json({jsonrpc: '2.0', id: 99, method: 'tools/list'}), headers: {...json({}).headers, Authorization: 'Bearer ' + tokens.access_token}});
     assert.equal(denied.status, 401); assert.match(denied.headers['www-authenticate'], /oauth-protected-resource\/synth/);
-  } finally {await sdk?.close(); router.close(); auth.close(); await remote.close(); await new Promise(resolve => server.close(resolve)); rmSync(directory, {recursive: true, force: true});}
+  } finally {await sdk?.close(); handler.close(); router.close(); auth.close(); await remote.close(); await new Promise(resolve => server.close(resolve)); rmSync(directory, {recursive: true, force: true});}
 });

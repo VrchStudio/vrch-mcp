@@ -24,12 +24,13 @@ const router = await createRemoteRouter({buildRevision:process.env.VRCH_MCP_BUIL
   resolveRegisteredTarget: createRegisteredTargetResolver({directoryURL: required('VRCH_MCP_DIRECTORY_URL')})});
 const authMetadata = auth.metadata;
 auth.metadata = () => ({...authMetadata(), client_id_metadata_document_supported: true});
-const server = createServer(createRemoteHTTPHandler({auth, resource, handleMCP: router.handle, sdkValidation, onRegistrationFailure: value => process.stderr.write(JSON.stringify({event:'oauth_registration_rejected',...value}) + '\n')}));
+const handler = createRemoteHTTPHandler({auth, resource, handleMCP: router.handle, sdkValidation, onRegistrationFailure: value => process.stderr.write(JSON.stringify({event:'oauth_registration_rejected',...value}) + '\n')});
+const server=createServer(handler);
 server.requestTimeout = 30000; server.headersTimeout = 10000;
 server.listen(Number(process.env.VRCH_MCP_PORT || 18916), '127.0.0.1', () => process.stdout.write('VRCH MCP listening on loopback.\n'));
 let stopping = false;
 function stop() {
-  if (stopping) return; stopping = true;
+  if (stopping) return; stopping = true; handler.close();
   let released = false;
   const release = () => {if (!released) {released = true; router.close(); auth.close();}};
   const deadline = setTimeout(() => {server.closeAllConnections(); release(); process.exit(0);}, 25000);

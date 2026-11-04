@@ -148,6 +148,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
   await catalogBridge.receive({jsonrpc: '2.0', id: 1, method: 'initialize'});
   await catalogBridge.receive({jsonrpc: '2.0', id: 2, method: 'tools/list'});
   const initialize = {...replies[0].result, serverInfo: {name: 'vrch-mcp-remote', version: '0.1.7-remote-dev' + (buildRevision === 'unknown' ? '' : '+' + buildRevision)}};
+  initialize.capabilities.tools.listChanged = true;
   initialize.instructions += '\nHosted tools always require the explicit connectionRef. Hosted terminal tools reuse the device terminal capability, current control owner, Private Input and approval checks; this remains an ordinary device user shell, not a project-only sandbox. Read terminal_events for terminal output. Sending input does not confirm execution; never replay shell input after an uncertain response. Device screenshots are not web Preview screenshots; apps_state reports the Preview runtime errors. Use apps_read_text/apps_write_text for bounded UTF-8 source edits in the current workspace. Hosted general file staging is not available; never treat local file paths as uploadable. Pairing does not replace the human Invite AI and Allow AI decisions.';
   initialize.instructions += '\n' + hostedInstructions;
   const catalog = [...replies[1].result.tools.filter(tool => !tool.name.startsWith('file_') && !hostedExcluded.has(tool.name)), ...workspaceTextTools, sdkReferenceTool, ...previewTools].map(original => {
@@ -165,6 +166,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
     }
     return tool;
   });
+  const catalogInfo={revision:digest(canonical(catalog)),toolCount:catalog.length};
   catalogBridge.close();
   async function connect(identity, args) {
     if (args.resume === true) {
@@ -314,13 +316,13 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
         : {connectionRef,...business(result),result:{images,events}};
       return envelopes(value,{...result,content:[...content({connectionRef,phase:value.phase,...(name==='terminal_input'?{delivery:'sent',execution:'unconfirmed',message:value.message}:{}),eventCount:events.length,imageCount:images.length,body:'structuredContent'}),...(result.content||[]).filter(item=>item.type!=='text')]});
     }
-    if (name === 'ai_capabilities') return envelopes(snapshot(load(identity, connectionRef)), result);
+    if (name === 'ai_capabilities') return envelopes({...snapshot(load(identity, connectionRef)),catalog:catalogInfo}, {...result,content:[...result.content,...content({catalog:catalogInfo,discovery:'Refresh tools/list in this conversation if the available tools differ. A catalog change does not require re-pairing.'})]});
     return envelopes({connectionRef, ...business(result)}, result);
   }
   return {catalog, async handle(identity, message) {
     owner(identity);
     if (message.method === 'initialize') return {jsonrpc: '2.0', id: message.id, result: {...initialize, instructions: initialize.instructions + ' Remote calls require their exact connectionRef. Generate a fresh attemptId for a new invitation and an operationId before each recoverable modification. Lost responses are queried with their original IDs, never replayed with new IDs.'}};
-    if (message.method === 'tools/list') return {jsonrpc: '2.0', id: message.id, result: {tools: catalog}};
+    if (message.method === 'tools/list') return {jsonrpc: '2.0', id: message.id, result: {tools: catalog,_meta:{'vrch.ai/catalog':catalogInfo}}};
     if (message.method === 'ping') return {jsonrpc: '2.0', id: message.id, result: {}};
     if (message.method !== 'tools/call') return {jsonrpc: '2.0', id: message.id, error: {code: -32601, message: 'Method not found'}};
     try {return {jsonrpc: '2.0', id: message.id, result: await call(identity, message.params?.name, message.params?.arguments || {})};}

@@ -1,5 +1,6 @@
 // Standard HTTP/OAuth boundary. Tool execution and verified device pairing stay
 // in their own adapters. No bare URL, cookie or MCP session authenticates a tool.
+import {catalogEvents} from './remote-catalog-events.mjs';
 import {randomBytes} from 'node:crypto';
 import {logo, logoPath, logoIcons} from './remote-branding.mjs';
 const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
@@ -37,7 +38,8 @@ export function createRemoteHTTPHandler({auth, resource, handleMCP, sdkValidatio
     const legacy = values['__Host-vrch-mcp-pairing'];
     return legacy?.startsWith(id + '.') ? legacy.slice(id.length + 1) : '';
   }
-  return async (request, response) => {
+  const changes=catalogEvents(auth);
+  const handler=async (request, response) => {
     try {
       if (request.headers.host !== target.host || request.headers.origin && request.headers.origin !== origin) {
         send(response, 403, {error: 'forbidden'}); return;
@@ -136,10 +138,12 @@ export function createRemoteHTTPHandler({auth, resource, handleMCP, sdkValidatio
         return;
       }
       if (path === target.pathname) {
+        const token=/^Bearer ([A-Za-z0-9_-]+)$/.exec(request.headers.authorization || '')?.[1];
         let identity;
-        try {identity = auth.authenticate(/^Bearer ([A-Za-z0-9_-]+)$/.exec(request.headers.authorization || '')?.[1]);}
+        try {identity = auth.authenticate(token);}
         catch {send(response, 401, {error: 'invalid_token'}, {'WWW-Authenticate': 'Bearer resource_metadata="' + origin + protectedPath + '", scope="vrch:mcp"'}); return;}
-        if (request.method !== 'POST') {send(response, 405, {error: 'method_not_allowed'}, {Allow: 'POST'}); return;}
+        if (request.method === 'GET') {changes.subscribe(request,response,identity,token);return;}
+        if (request.method !== 'POST') {send(response, 405, {error: 'method_not_allowed'}, {Allow: 'GET, POST'}); return;}
         if (!request.headers.accept?.includes('application/json') || !request.headers.accept?.includes('text/event-stream')) {send(response, 406, {error: 'not_acceptable'}); return;}
         if (request.headers['content-type']?.split(';')[0] !== 'application/json') {send(response, 415, {error: 'invalid_request'}); return;}
         let message;
@@ -153,7 +157,7 @@ export function createRemoteHTTPHandler({auth, resource, handleMCP, sdkValidatio
           send(response, 200, {...reply, result: {...reply.result,
             serverInfo: {...reply.result.serverInfo, title: 'Vrch Synth', icons: logoIcons(origin)}}}); return;
         }
-        send(response, 200, reply); return;
+        if(!changes.respond(message,reply,response))send(response, 200, reply); return;
       }
       send(response, 404, {error: 'not_found'});
     } catch (error) {
@@ -166,4 +170,6 @@ export function createRemoteHTTPHandler({auth, resource, handleMCP, sdkValidatio
       else response.end();
     }
   };
+  handler.close=()=>changes.close();
+  return handler;
 }

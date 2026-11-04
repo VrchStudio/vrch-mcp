@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Notify existing remote conversations when their tool catalogue needs refreshing, keeping the original device authorization.
+
 - Publish only to the current web Preview and observe a person-shared 2D frame with its actual revision.
 
 - Show the current vrch.io logo in remote connector metadata and pairing tabs.
