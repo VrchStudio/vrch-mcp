@@ -17,7 +17,7 @@ const {clients, unavailable} = await loadWebClients();
 for (const name of unavailable) process.stderr.write('OAuth client metadata unavailable: ' + name + '\n');
 const sdkValidation = process.env.VRCH_MCP_SDK_VALIDATION === 'true';
 if (sdkValidation) clients.set(issuer + '/sdk-client.json', {tokenEndpointAuthMethod: 'none', redirectUris: [issuer + '/sdk-callback']});
-if (!clients.size) throw Error('No verified OAuth client is available.');
+// Dynamic Google registration remains available if a CIMD host is temporarily offline.
 const auth = createPairingAuthorization({filename: join(directory, 'auth.sqlite'), issuer, resource, clients,
   verifyPairing: createDevicePairingVerifier({publicKey: readFileSync(required('VRCH_MCP_DEVICE_VERIFY_KEY_FILE')), issuer: required('VRCH_MCP_DEVICE_ISSUER')})});
 const router = await createRemoteRouter({buildRevision:process.env.VRCH_MCP_BUILD || 'unknown',filename: join(directory, 'connections.sqlite'), credentialDirectory: join(directory, 'credentials'), encryptionKey: key,

@@ -3,7 +3,7 @@
 import {randomBytes} from 'node:crypto';
 const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const cookies = header => Object.fromEntries(String(header || '').split(';').map(part => part.trim().split('=')));
-const oauthErrors = new Set(['invalid_request', 'invalid_client', 'invalid_redirect_uri', 'invalid_grant', 'invalid_target', 'unsupported_grant_type', 'invalid_token', 'pairing_unavailable', 'invalid_pairing_proof', 'pairing_conflict', 'invalid_browser_session']);
+const oauthErrors = new Set(['invalid_request', 'invalid_client_metadata', 'invalid_client', 'invalid_redirect_uri', 'invalid_grant', 'invalid_target', 'unsupported_grant_type', 'invalid_token', 'pairing_unavailable', 'invalid_pairing_proof', 'pairing_conflict', 'invalid_browser_session']);
 
 export function createRemoteHTTPHandler({auth, resource, handleMCP, sdkValidation = false}) {
   const target = new URL(resource), origin = target.origin, metadata = auth.metadata();
@@ -51,6 +51,11 @@ export function createRemoteHTTPHandler({auth, resource, handleMCP, sdkValidatio
         send(response, 200, {resource, authorization_servers: [metadata.issuer], scopes_supported: ['vrch:mcp'], bearer_methods_supported: ['header']}); return;
       }
       if (request.method === 'GET' && path === '/.well-known/oauth-authorization-server') {send(response, 200, metadata); return;}
+      if (request.method === 'POST' && path === '/register') {
+        if (request.headers['content-type']?.split(';')[0] !== 'application/json') {send(response, 415, {error: 'invalid_request'}); return;}
+        let value; try {value = JSON.parse(await body(request, 8192));} catch {send(response, 400, {error: 'invalid_client_metadata'}); return;}
+        send(response, 201, auth.register(value)); return;
+      }
       if (request.method === 'GET' && path === '/authorize') {
         const started = auth.begin(objectParams(url.searchParams));
         send(response, 303, '', {Location: '/pair/' + started.id, 'Set-Cookie': '__Host-vrch-mcp-pairing=' + started.id + '.' + started.browserSecret + '; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=600'}); return;
@@ -84,8 +89,16 @@ export function createRemoteHTTPHandler({auth, resource, handleMCP, sdkValidatio
       if (['/token', '/revoke'].includes(path) && request.method === 'POST') {
         if (request.headers['content-type']?.split(';')[0] !== 'application/x-www-form-urlencoded') {send(response, 415, {error: 'invalid_request'}); return;}
         const params = objectParams(new URLSearchParams(await body(request, 8192)));
-        if (path === '/token') send(response, 200, auth.exchange(params));
-        else {auth.revoke(params.token, params.client_id); send(response, 200, {});}
+        let basic;
+        if (request.headers.authorization !== undefined) {
+          const match = /^Basic ([A-Za-z0-9+/]+={0,2})$/.exec(request.headers.authorization);
+          if (!match) {send(response, 401, {error: 'invalid_client'}); return;}
+          const decoded = Buffer.from(match[1], 'base64').toString('utf8'), colon = decoded.indexOf(':');
+          try {if (colon < 1) throw Error(); basic = {id: decodeURIComponent(decoded.slice(0, colon).replace(/\+/g, ' ')), secret: decodeURIComponent(decoded.slice(colon + 1).replace(/\+/g, ' '))};}
+          catch {send(response, 401, {error: 'invalid_client'}); return;}
+        }
+        if (path === '/token') send(response, 200, auth.exchange(params, basic));
+        else {auth.revoke(params.token, params.client_id, {params, basic}); send(response, 200, {});}
         return;
       }
       if (path === target.pathname) {
@@ -106,6 +119,8 @@ export function createRemoteHTTPHandler({auth, resource, handleMCP, sdkValidatio
       }
       send(response, 404, {error: 'not_found'});
     } catch (error) {
+      if (!response.headersSent && error.code === 'invalid_client' && request.headers.authorization !== undefined && ['/token','/revoke'].includes(new URL(request.url, origin).pathname)) {send(response, 401, {error: 'invalid_client'}, {'WWW-Authenticate': 'Basic realm="vrch-mcp"'}); return;}
+      if (!response.headersSent && error.code === 'registration_limit') {send(response, 429, {error: 'temporarily_unavailable'}, {'Retry-After': '60'}); return;}
       if (!response.headersSent && request.method === 'GET' && new URL(request.url, origin).pathname === '/authorize' && oauthErrors.has(error.code)) {
         try {send(response, 303, '', {Location: auth.authorizationError(objectParams(new URL(request.url, origin).searchParams), error.code)}); return;} catch {}
       }

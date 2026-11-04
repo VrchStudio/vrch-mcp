@@ -1,7 +1,7 @@
 # Hosted Remote MCP (development)
 
 This private service package adds Streamable HTTP and device-approved OAuth for
-ChatGPT and Claude web. It is separate from the published dependency-free STDIO package (0.1.7).
+ChatGPT, Claude and Google web clients (actual Gemini acceptance pending). It is separate from the published dependency-free STDIO package (0.1.7).
 It is not a published MCP release or a claim of ChatGPT/device acceptance.
 
 Use Node 22.23.4 and `npm ci --prefix remote --omit=dev --ignore-scripts`.
@@ -126,3 +126,21 @@ Endpoints are environment-specific: SG testing uses `https://mcp-sg.vrch.ai/synt
 Terminal input/output is available through terminal_input and terminal_events, with explicit connectionRef. Terminal event arrays and image metadata are returned in structuredContent; actual images remain native MCP content. App/file calls do not drain the terminal event queue. The common queue remains bounded at 128 KiB, not an unlimited transcript archive. terminal_input reports delivery:sent and execution:unconfirmed; inspect output or rejection, never automatically replay commands. Raw command bodies/output are not added to the durable App operation journal or service access logs.
 Private Input/cancel tools retain core descriptions and device checks. Existing My Apps grants may expose manual Private Input and cancellation while privateCommand remains false (the dedicated private command protocol is currently Recovery-only). Do not override that guard, send credentials via ordinary input, or claim all listed stable-catalog tools are available on every device. Hosted tooling still accepts Apps invitations only; this change does not add Recovery invitation routing or a cloud shell.
 Deploy with the existing issuer, state volume and encryption key. Preserve OAuth grants and connectionRef identities, and explicitly resume the original connection after the service restarts; never re-pair or generate a replacement device invitation to refresh tools. Refresh client tool metadata through its normal controls.
+
+Google web onboarding uses `POST /register`, advertised by OAuth discovery. DCR
+supports `none`, `client_secret_basic` (RFC default), and `client_secret_post`,
+while ChatGPT/Claude keep their existing published client identities. Only
+Google's documented `oauth-redirect`, `oauth-redirect-sandbox` and `oauth-redirect-test` on `googleusercontent.com`
+`/r/` and `/a/` HTTPS callback families are accepted; every registered callback
+is then matched exactly during authorization/code exchange. User-supplied
+client names and metadata URLs are not trusted identities or fetch targets.
+Client secrets are returned once and stored only as SHA-256 hashes. Registration
+does not grant device access: PKCE, resource binding, human device pairing and
+Invite/Allow still apply. Existing grants and connectionRefs are not migrated.
+Registration bodies are limited to 8 KiB and four callbacks; existing edge rate
+limits apply. Abandoned registrations older than a day can be removed, preserving
+clients referenced by grants or unexpired pairings; total retained clients are
+bounded at 10,000. Google persistent-linking refresh semantics are not silently
+substituted for the existing refresh-token rotation/replay detection contract.
+The actual Gemini redirect URI, OAuth round trip and refresh remain client
+acceptance checks; protocol fixtures are not a real Gemini login.

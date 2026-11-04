@@ -5,6 +5,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {createHash, randomBytes, timingSafeEqual} from 'node:crypto';
 import {lstatSync, chmodSync} from 'node:fs';
 import {dirname} from 'node:path';
+import {createDynamicRegistration} from './remote-registration.mjs';
 
 const token = () => randomBytes(32).toString('base64url');
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -43,15 +44,27 @@ export function createPairingAuthorization({filename, issuer, resource, clients,
       expires INTEGER NOT NULL, spent INTEGER NOT NULL DEFAULT 0);
     CREATE INDEX IF NOT EXISTS tokens_grant ON tokens(grant_id);`);
   const now = () => Math.floor(clock() / 1000);
+  const dynamic = createDynamicRegistration(db, now);
   const transaction = fn => {
     db.exec('BEGIN IMMEDIATE');
     try {const result = fn(); db.exec('COMMIT'); return result;} catch (error) {db.exec('ROLLBACK'); throw error;}
   };
   function client(id, redirect) {
-    const registered = clients.get(id);
-    if (!registered || registered.tokenEndpointAuthMethod !== 'none') throw fail('invalid_client');
+    const registered = clients.get(id) || dynamic.get(id);
+    if (!registered) throw fail('invalid_client');
     if (redirect !== undefined && !registered.redirectUris.includes(redirect)) throw fail('invalid_redirect_uri');
     return registered;
+  }
+  function authenticateClient(params, basic) {
+    const id = basic?.id ?? params.client_id, registered = client(id);
+    if (basic && (params.client_secret !== undefined || params.client_id !== undefined && params.client_id !== id)) throw fail('invalid_client');
+    const method = basic ? 'client_secret_basic' : params.client_secret !== undefined ? 'client_secret_post' : 'none';
+    if (method !== registered.tokenEndpointAuthMethod) throw fail('invalid_client');
+    if (method !== 'none') {
+      const secret = basic?.secret ?? params.client_secret;
+      if (typeof secret !== 'string' || secret.length > 256 || !same(hash(secret), registered.secretHash)) throw fail('invalid_client');
+    }
+    return id;
   }
   function begin(params) {
     if (!short(params.redirect_uri) || !params.redirect_uri) throw fail('invalid_request');
@@ -115,14 +128,16 @@ export function createPairingAuthorization({filename, issuer, resource, clients,
     redirect.searchParams.set('error', code); redirect.searchParams.set('state', params.state); redirect.searchParams.set('iss', issuer);
     return redirect.href;
   }
-  function issue(grant) {
+  function issue(grant, allowRefresh = true) {
     const accessToken = token(), refreshToken = token();
     db.prepare('INSERT INTO tokens(hash,grant_id,kind,expires) VALUES(?,?,?,?)').run(hash(accessToken), grant.id, 'access', now() + 900);
-    db.prepare('INSERT INTO tokens(hash,grant_id,kind,expires) VALUES(?,?,?,?)').run(hash(refreshToken), grant.id, 'refresh', now() + 30 * 86400);
-    return {access_token: accessToken, refresh_token: refreshToken, token_type: 'Bearer', expires_in: 900, scope: 'vrch:mcp'};
+    if (allowRefresh) db.prepare('INSERT INTO tokens(hash,grant_id,kind,expires) VALUES(?,?,?,?)').run(hash(refreshToken), grant.id, 'refresh', now() + 30 * 86400);
+    return {access_token: accessToken, ...(allowRefresh ? {refresh_token: refreshToken} : {}), token_type: 'Bearer', expires_in: 900, scope: 'vrch:mcp'};
   }
-  function exchange(params) {
-    client(params.client_id);
+  function exchange(params, basic) {
+    params = {...params, client_id: authenticateClient(params, basic)};
+    const registered = client(params.client_id);
+    if (registered.grantTypes && !registered.grantTypes.includes(params.grant_type)) throw fail('unsupported_grant_type');
     if (params.resource !== resource) throw fail('invalid_target');
     if (params.grant_type === 'authorization_code') {
       if (!verifierPattern.test(params.code_verifier || '') || typeof params.code !== 'string' || params.code.length > 128) throw fail('invalid_grant');
@@ -134,7 +149,7 @@ export function createPairingAuthorization({filename, issuer, resource, clients,
         const grant = {id: token(), principal: value.principal, clientId: value.client_id, deviceId: value.device_id};
         db.prepare('INSERT INTO grants(id,principal,client_id,device_id) VALUES(?,?,?,?)').run(grant.id, grant.principal, grant.clientId, grant.deviceId);
         db.prepare('UPDATE pairing SET phase=? WHERE id=?').run('used', value.id);
-        return issue(grant);
+        return issue(grant, registered.grantTypes?.includes('refresh_token') !== false);
       });
     }
     if (params.grant_type !== 'refresh_token' || typeof params.refresh_token !== 'string' || params.refresh_token.length > 128) throw fail('unsupported_grant_type');
@@ -159,13 +174,14 @@ export function createPairingAuthorization({filename, issuer, resource, clients,
     if (!value || value.revoked || value.expires <= now()) throw fail('invalid_token');
     return {issuer, principal: value.principal, oauthClientId: value.client_id, pairedDeviceId: value.device_id, scope: 'vrch:mcp', resource};
   }
-  function revoke(value, clientId) {
-    client(clientId);
+  function revoke(value, clientId, credentials = {}) {
+    clientId = authenticateClient({...credentials.params, client_id: clientId}, credentials.basic);
     if (typeof value !== 'string' || value.length > 128) return;
     db.prepare('UPDATE grants SET revoked=1 WHERE client_id=? AND id IN (SELECT grant_id FROM tokens WHERE hash=?)').run(clientId, hash(value));
   }
-  return {begin, challenge, approve: (id, proof) => decide(id, proof, true), deny: (id, proof) => decide(id, proof, false), finish, authorizationError, exchange, authenticate, revoke, close: () => db.close(),
+  return {register: dynamic.register, begin, challenge, approve: (id, proof) => decide(id, proof, true), deny: (id, proof) => decide(id, proof, false), finish, authorizationError, exchange, authenticate, revoke, close: () => db.close(),
     metadata: () => ({issuer, authorization_endpoint: issuer + '/authorize', token_endpoint: issuer + '/token', revocation_endpoint: issuer + '/revoke',
-      response_types_supported: ['code'], grant_types_supported: ['authorization_code', 'refresh_token'], token_endpoint_auth_methods_supported: ['none'],
+      response_types_supported: ['code'], grant_types_supported: ['authorization_code', 'refresh_token'], token_endpoint_auth_methods_supported: ['none', 'client_secret_basic', 'client_secret_post'],
+      registration_endpoint: issuer + '/register',
       code_challenge_methods_supported: ['S256'], scopes_supported: ['vrch:mcp'], authorization_response_iss_parameter_supported: true})};
 }
