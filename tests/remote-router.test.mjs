@@ -84,13 +84,11 @@ test('explicit remote references isolate identities and clients, keep attempt re
     assert(tools.find(tool => tool.name === 'apps_save').inputSchema.required.includes('operationId'));
     assert(tools.find(tool => tool.name === 'apps_state').inputSchema.required.includes('connectionRef'));
     assert(!tools.some(tool => tool.name === 'file_upload'), 'Local filesystem paths are not exposed by this hosted slice.');
-    for (const name of ['terminal_input', 'terminal_run_private', 'terminal_cancel_private_input']) {
-      assert(!tools.some(tool => tool.name === name));
-      assert.equal((await f.call(name, {connectionRef: reference, data: 'pwd\n'})).structuredContent.code, 'unsupported_tool');
-    }
-    f.remote.output('private-terminal-history-fixture');
-    await until(() => f.emitted.some(event => event.type === 'data' && event.data.includes('private-terminal-history-fixture')));
-    assert(!JSON.stringify(await f.call('terminal_events', {connectionRef: reference, waitSeconds: 0})).includes('private-terminal-history-fixture'));
+    for (const name of ['terminal_input','terminal_run_private','terminal_cancel_private_input']) assert(tools.some(tool=>tool.name===name));
+    assert.equal((await f.call('terminal_input',{connectionRef:reference,data:'pwd\n'})).structuredContent.code,'unsupported_capability');
+    f.remote.output('no-terminal-scope-fixture');
+    await until(()=>f.emitted.some(event=>event.type==='data'));
+    assert(!JSON.stringify(await f.call('terminal_events',{connectionRef:reference,waitSeconds:0})).includes('no-terminal-scope-fixture'));
     const repeated = await f.call('terminal_connect', {url, attemptId});
     assert.equal(repeated.structuredContent.connectionRef, reference);
     assert.equal(f.remote.frames.filter(frame => frame.type === 'ai_join').length, 1);
@@ -368,5 +366,45 @@ test('revoked device authorization is not advertised as resumable', {skip:!suppo
   assert.equal(state.phase,'removed');assert.equal(state.resumable,false);
   assert.equal((await f.call('ai_capabilities',{connectionRef:reference})).structuredContent.resumable,false);
   assert.equal((await f.call('terminal_connect',{connectionRef:reference,resume:true})).structuredContent.code,'approval_required');
+ }finally{await f.close();}
+});
+
+
+test('hosted terminal follows ownership, privacy and explicit resume without replay or cross-client access', {skip:!supported},async()=>{
+ const f=await fixture();
+ Object.assign(f.remote.state.assistantCapabilities,{terminal:true,cancelPrivateInput:true,privateCommand:false});
+ try{
+  const {reference}=await f.connect();
+  const tool=f.router.catalog.find(tool=>tool.name==='terminal_input');
+  assert.equal(tool.annotations.readOnlyHint,false);assert.equal(tool.annotations.idempotentHint,false);
+  let caps=(await f.call('ai_capabilities',{connectionRef:reference})).structuredContent.capabilities;
+  assert.equal(caps.terminal,true);assert.equal(caps.privateCommand,false);assert.equal(caps.cancelPrivateInput,true);
+  assert.equal((await f.call('terminal_run_private',{connectionRef:reference,argv:['true']})).structuredContent.code,'unsupported_capability');
+  f.remote.output('ordinary-output-fixture');await until(()=>f.emitted.some(e=>e.type==='data'));
+  assert(!JSON.stringify(await f.call('apps_state',{connectionRef:reference})).includes('ordinary-output-fixture'));
+  assert(JSON.stringify(await f.call('terminal_events',{connectionRef:reference,waitSeconds:0})).includes('ordinary-output-fixture'));
+  const sent=await f.call('terminal_input',{connectionRef:reference,data:'printf fixture\n'});
+  assert.equal(sent.structuredContent.delivery,'sent');assert.equal(sent.structuredContent.execution,'unconfirmed');assert.equal(sent.structuredContent.retryable,false);
+  await until(()=>f.remote.frames.some(e=>e.type==='input'));
+  const count=()=>f.remote.frames.filter(e=>e.type==='input').length;
+  for(const change of [{owner:'human',epoch:2},{owner:'ai',private:true,epoch:3},{private:false,passwordRequired:true,epoch:4}]){
+   f.remote.update(change);await until(()=>f.emitted.some(e=>e.type==='collaboration'&&e.epoch===change.epoch));
+   assert.equal((await f.call('terminal_input',{connectionRef:reference,data:'must-not-send\n'})).isError,true);assert.equal(count(),1);
+  }
+  f.remote.send({type:'ready',streamId:'privacy-reset',outputStart:0});f.remote.output('private-output-must-not-leak');
+  await until(()=>f.emitted.some(e=>e.type==='data'&&e.data.includes('private-output-must-not-leak')));
+  assert(!JSON.stringify(await f.call('terminal_events',{connectionRef:reference,waitSeconds:0})).includes('private-output-must-not-leak'));
+  const canceled=await f.call('terminal_cancel_private_input',{connectionRef:reference,resumeAI:false});assert(!canceled.isError);
+  for(const actor of [{...identity,principal:'other'},{...identity,oauthClientId:'other'}])assert.equal((await f.call('terminal_input',{connectionRef:reference,data:'cross-client\n'},actor)).structuredContent.code,'context_mismatch');
+  const collaborationCount=f.emitted.filter(e=>e.type==='collaboration').length;
+  await f.restart();
+  await f.call('terminal_connect',{connectionRef:reference,resume:true});await until(()=>f.remote.frames.some(e=>e.type==='ai_resume'));
+  await until(()=>f.emitted.filter(e=>e.type==='collaboration').length>collaborationCount);
+  assert.equal(count(),1,'A service restart never replays shell input');
+  assert.equal((await f.call('ai_capabilities',{connectionRef:reference})).structuredContent.capabilities.terminal,true);
+  f.remote.remove();await until(()=>f.emitted.some(e=>e.type==='ended'&&e.code==='ai_revoked'));
+  assert.equal((await f.call('terminal_input',{connectionRef:reference,data:'after-revoke\n'})).isError,true);assert.equal(count(),1);
+  assert(!readFileSync(f.filename).includes(Buffer.from('ordinary-output-fixture')));
+  assert(!readFileSync(f.filename).includes(Buffer.from('printf fixture')));
  }finally{await f.close();}
 });

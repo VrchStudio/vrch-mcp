@@ -14,7 +14,7 @@ const fail = code => Object.assign(Error(code), {code});
 const canonical = value => JSON.stringify(value, (_key, child) => child && !Array.isArray(child) && typeof child === 'object' ? Object.fromEntries(Object.keys(child).sort().map(key => [key, child[key]])) : child);
 const digest = value => createHash('sha256').update(value).digest('hex');
 const durable = new Set(['apps_create', 'apps_open', 'apps_publish', 'apps_save', 'apps_import_inspect', 'apps_import_commit', 'apps_file_commit', 'apps_launch', 'apps_write_text']);
-const hostedExcluded = new Set(['terminal_input', 'terminal_run_private', 'terminal_cancel_private_input', 'apps_file_export', 'apps_file_commit', 'apps_export_begin', 'apps_import_inspect', 'apps_import_commit']);
+const hostedExcluded = new Set(['apps_file_export', 'apps_file_commit', 'apps_export_begin', 'apps_import_inspect', 'apps_import_commit']);
 const content = value => [{type: 'text', text: JSON.stringify(value)}];
 
 export async function createRemoteRouter({filename, credentialDirectory, encryptionKey, resolveRegisteredTarget, createClient = createAIClient, waitMs = 20000, pendingWaitMs = 600000, resultDrainMs = 45000, idleMs = 1800000, buildRevision = 'unknown'}) {
@@ -79,7 +79,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
     }
     else if (['ai_approved', 'ai_resumed'].includes(event.type)) {clearTimeout(entry?.pendingTimer); if (entry) entry.pendingTimer = null; setState(id, 'approved');}
     else if (event.type === 'collaboration') {
-      if (entry) entry.inputEpoch=event.epoch;
+      if (entry) {entry.inputEpoch=event.epoch;entry.terminalReadable=event.assistantCapabilities?.terminal===true&&!event.private&&!event.passwordRequired;}
       const previous = db.prepare('SELECT phase FROM connections WHERE id=?').get(id)?.phase;
       setState(id, 'ready', null, event.assistantCapabilities);
       if (entry && previous !== 'ready') {entry.lastCall = Date.now(); armIdle(entry);}
@@ -109,7 +109,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
     const pending = new Map(), entry = {requests: 0, lastCall: Date.now()};
     const credentialStore = createRemoteCredentialStore({directory: credentialDirectory, key: encryptionKey,
       binding: {...identity, deviceId: record.device, channel: 'apps', connectionRef: record.id}});
-    entry.bridge = createTerminalMCP({toolCatalog: 'stable', imageDelivery: 'events', send: message => {
+    entry.bridge = createTerminalMCP({toolCatalog: 'stable', imageDelivery: 'events', eventDelivery: 'terminal', send: message => {
       if (pending.has(message.id)) {pending.get(message.id)(message.result); pending.delete(message.id);}
     }, createClient: (address, options) => {
       const client = createClient(address, {...options, WebSocketImpl: target.WebSocketImpl, credentialStore, autoReconnect: false,
@@ -119,10 +119,12 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
           if (event.type === 'apps_guide') event = {...event, instructions: event.instructions
             .replace('Use app-workspace file_upload/file_download with apps_file_export/apps_file_commit for developer files; completed transport does not publish/save/execute files.', hostedInstructions)
             .replace('Human screenshots arrive automatically as native image content in terminal tool results.', 'Human-shared screenshots are queued for terminal_events.')};
-          if (event.type !== 'data') options.emit(event);
+          if (event.type !== 'data' || entry.terminalReadable) options.emit(event);
         } catch {queueMicrotask(() => entry.shutdown());}}});
       const capabilities = client.capabilities;
       client.capabilities = () => hostedCapabilities(capabilities());
+      const input = client.input;
+      client.input = data => {if (!capabilities()?.terminal) throw fail('unsupported_capability'); return input(data);};
       return client;
     }});
     entry.shutdown = (reason = 'client_closed') => {entry.shutdownReason = reason; clearTimeout(entry.pendingTimer); clearTimeout(entry.idleTimer); entry.bridge.close();};
@@ -143,7 +145,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
   await catalogBridge.receive({jsonrpc: '2.0', id: 1, method: 'initialize'});
   await catalogBridge.receive({jsonrpc: '2.0', id: 2, method: 'tools/list'});
   const initialize = {...replies[0].result, serverInfo: {name: 'vrch-mcp-remote', version: '0.1.7-remote-dev' + (buildRevision === 'unknown' ? '' : '+' + buildRevision)}};
-  initialize.instructions += '\nHosted tools always require the explicit connectionRef. Hosted App tools do not expose shell input or terminal transcripts. The existing device grant remains broader than a project sandbox; this tool filter does not create project-only authorization. Device screenshots are not web Preview screenshots; apps_state reports the Preview runtime errors. Use apps_read_text/apps_write_text for bounded UTF-8 source edits in the current workspace. Hosted general file staging is not available; never treat local file paths as uploadable. Pairing does not replace the human Invite AI and Allow AI decisions.';
+  initialize.instructions += '\nHosted tools always require the explicit connectionRef. Hosted terminal tools reuse the device terminal capability, current control owner, Private Input and approval checks; this remains an ordinary device user shell, not a project-only sandbox. Read terminal_events for terminal output. Sending input does not confirm execution; never replay shell input after an uncertain response. Device screenshots are not web Preview screenshots; apps_state reports the Preview runtime errors. Use apps_read_text/apps_write_text for bounded UTF-8 source edits in the current workspace. Hosted general file staging is not available; never treat local file paths as uploadable. Pairing does not replace the human Invite AI and Allow AI decisions.';
   initialize.instructions += '\n' + hostedInstructions;
   const catalog = [...replies[1].result.tools.filter(tool => !tool.name.startsWith('file_') && !hostedExcluded.has(tool.name)), ...workspaceTextTools, sdkReferenceTool].map(original => {
     const tool = structuredClone(original);
@@ -290,7 +292,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
     }
     const result = await bounded(invoke(), null);
     if (!result) return envelopes({connectionRef, phase: 'outcome_unknown', retryable: false});
-    if (name === 'terminal_events' || name === 'take_screenshot') {
+    if (name === 'terminal_events' || name === 'take_screenshot' || name === 'terminal_input' && !result.isError) {
       const events = [], images = [];
       for (const item of result.content || []) {
         if (item.type !== 'text') continue;
@@ -298,8 +300,10 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
         (event.type === 'screenshot' ? images : events).push(event);
       }
       const value = name === 'terminal_events' ? {...snapshot(load(identity,connectionRef)),events,images}
+        : name === 'terminal_input' ? {connectionRef,phase:'succeeded',retryable:false,delivery:'sent',execution:'unconfirmed',events,images,
+          message:'Input sent; execution is not confirmed. Read terminal_events for output or rejection. Never replay input automatically after an interruption.'}
         : {connectionRef,...business(result),result:{images,events}};
-      return envelopes(value,{...result,content:[...content({connectionRef,phase:value.phase,imageCount:images.length}),...(result.content||[]).filter(item=>item.type!=='text')]});
+      return envelopes(value,{...result,content:[...content({connectionRef,phase:value.phase,...(name==='terminal_input'?{delivery:'sent',execution:'unconfirmed',message:value.message}:{}),eventCount:events.length,imageCount:images.length,body:'structuredContent'}),...(result.content||[]).filter(item=>item.type!=='text')]});
     }
     if (name === 'ai_capabilities') return envelopes(snapshot(load(identity, connectionRef)), result);
     return envelopes({connectionRef, ...business(result)}, result);

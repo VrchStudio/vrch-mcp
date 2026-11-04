@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Use the approved device terminal from web AI with existing control and privacy rules.
+- Keep terminal output available when App tools run between terminal reads.
+
 - Use /synth with separate SG test and EA production domains.
 
 - Identify SDK reference content and explain how to resume a disconnected connection.
