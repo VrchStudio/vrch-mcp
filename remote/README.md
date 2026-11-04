@@ -145,3 +145,9 @@ bounded at 10,000. Google persistent-linking refresh semantics are not silently
 substituted for the existing refresh-token rotation/replay detection contract.
 The actual Gemini redirect URI, OAuth round trip and refresh remain client
 acceptance checks; protocol fixtures are not a real Gemini login.
+
+Each OAuth pairing uses its own Secure/HttpOnly browser cookie, so concurrent
+platform tabs do not replace one another. The previous shared-cookie format is
+accepted for existing in-flight requests only; grants, tokens and connectionRefs
+are unchanged. My Apps approval is distinct from completing the platform OAuth
+exchange and from joining a device through Invite/Allow.

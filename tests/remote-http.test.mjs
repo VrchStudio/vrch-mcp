@@ -75,7 +75,7 @@ test('real HTTP OAuth pairing and official SDK Streamable HTTP use the shared MC
     assert.equal(codePage.status,200);
     assert(codePage.text.includes('id="pairingCode"'));
     assert(codePage.text.includes('value="'+sdkPair.split('/').at(-1)+'"'));
-    assert(codePage.text.includes('Connect AI service'));
+    assert(codePage.text.includes('Paste this code in My Apps to authorize the connection.'));
     assert(!codePage.text.includes('vrch-110')&&!codePage.text.includes('vrch-130')&&!codePage.text.includes('<a '));
     const sdkChallenge = (await call(sdkPair + '/challenge')).json();
     assert.equal(sdkChallenge.clientId, issuer + '/sdk-client.json');
@@ -97,8 +97,19 @@ test('real HTTP OAuth pairing and official SDK Streamable HTTP use the shared MC
     const query = new URLSearchParams({client_id: clientId, redirect_uri: redirectUri, resource, scope: 'vrch:mcp', response_type: 'code', state: 'preserved', code_challenge_method: 'S256', code_challenge: createHash('sha256').update(verifier).digest('base64url')});
     const start = await call('/authorize?' + query);
     assert.equal(start.status, 303); const pairPath = start.headers.location;
-    const cookie = start.headers['set-cookie'][0].split(';')[0];
+    let cookie = start.headers['set-cookie'][0].split(';')[0];
     assert.match(start.headers['set-cookie'][0], /Secure; HttpOnly; SameSite=Lax/);
+    const parallel = await call('/authorize?' + new URLSearchParams({...Object.fromEntries(query),state:'parallel'}));
+    const secondCookie = parallel.headers['set-cookie'][0].split(';')[0];
+    assert.notEqual(cookie.split('=')[0],secondCookie.split('=')[0]);
+    const legacy = auth.begin({...Object.fromEntries(query),state:'legacy'});
+    cookie += '; ' + secondCookie + '; __Host-vrch-mcp-pairing=' + legacy.id + '.' + legacy.browserSecret;
+    for (const path of [pairPath,parallel.headers.location,'/pair/'+legacy.id]) {
+      const status = await call(path+'/status',{method:'POST',headers:{Cookie:cookie,Origin:issuer}});
+      assert.equal(status.json().phase,'pending');
+    }
+    assert.equal((await call(pairPath+'/status',{method:'POST',headers:{Cookie:secondCookie,Origin:issuer}})).status,400);
+
     const wait = await call(pairPath + '/status', {method: 'POST', headers: {Cookie: cookie, Origin: issuer}});
     assert.equal(wait.json().phase, 'pending');
     assert.equal((await call(pairPath + '/status', {method: 'POST', headers: {Cookie: cookie}})).status, 403);

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep parallel AI authorization tabs independent and simplify pairing guidance.
+
 - Accept Gemini’s complete set of Google OAuth callback addresses.
 
 - Diagnose rejected connector registrations without logging secrets or account paths.
