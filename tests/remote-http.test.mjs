@@ -17,7 +17,7 @@ const {createRemoteHTTPHandler} = await import('../src/remote-http.mjs');
 const {createRemoteRouter} = supported ? await import('../src/remote-router.mjs') : {};
 
 test('real HTTP OAuth pairing and official SDK Streamable HTTP use the shared MCP catalog only after auth', {skip: !supported}, async () => {
-  const issuer = 'https://mcp-sg.example', resource = issuer + '/mcp', clientId = 'https://chatgpt.com/oauth/client.json';
+  const issuer = 'https://mcp-sg.example', resource = issuer + '/synth', clientId = 'https://chatgpt.com/oauth/client.json';
   const redirectUri = 'https://chatgpt.com/connector_platform_oauth_redirect', keys = generateKeyPairSync('ed25519');
   const clients = new Map([[clientId, {tokenEndpointAuthMethod: 'none', redirectUris: [redirectUri]}]]);
   clients.set(issuer + '/sdk-client.json', {tokenEndpointAuthMethod: 'none', redirectUris: [issuer + '/sdk-callback']});
@@ -50,8 +50,10 @@ test('real HTTP OAuth pairing and official SDK Streamable HTTP use the shared MC
   const json = value => ({method: 'POST', headers: {'Content-Type': 'application/json', Accept: 'application/json, text/event-stream'}, value: JSON.stringify(value)});
   let sdk;
   try {
-    assert.equal((await call('/mcp', json({jsonrpc: '2.0', id: 1, method: 'tools/list'}))).status, 401);
+    assert.equal((await call('/synth', json({jsonrpc: '2.0', id: 1, method: 'tools/list'}))).status, 401);
     assert.equal(dispatched, 0);
+    assert.equal((await call('/mcp')).status,404);
+    assert.equal((await call('/.well-known/oauth-protected-resource/mcp')).status,404);
     const sdkMetadata = (await call('/sdk-client.json')).json();
     assert.deepEqual(sdkMetadata.redirect_uris, [issuer + '/sdk-callback']);
     assert(!(await call('/sdk-callback?code=never-reflect-this')).text.includes('never-reflect-this'));
@@ -86,11 +88,11 @@ test('real HTTP OAuth pairing and official SDK Streamable HTTP use the shared MC
     assert(sdkTokens.access_token && sdkTokens.refresh_token);
     assert.equal(auth.authenticate(sdkTokens.access_token).oauthClientId, issuer + '/sdk-client.json');
 
-    const discover = await call('/.well-known/oauth-protected-resource/mcp');
+    const discover = await call('/.well-known/oauth-protected-resource/synth');
     assert.equal(discover.json().authorization_servers[0], issuer);
     assert.equal((await call('/.well-known/oauth-authorization-server')).json().code_challenge_methods_supported[0], 'S256');
-    assert.equal((await call('/mcp', {headers: {Origin: 'https://evil.example'}})).status, 403);
-    assert.equal((await call('/mcp', {headers: {Host: 'evil.example'}})).status, 403);
+    assert.equal((await call('/synth', {headers: {Origin: 'https://evil.example'}})).status, 403);
+    assert.equal((await call('/synth', {headers: {Host: 'evil.example'}})).status, 403);
     const verifier = randomBytes(32).toString('base64url');
     const query = new URLSearchParams({client_id: clientId, redirect_uri: redirectUri, resource, scope: 'vrch:mcp', response_type: 'code', state: 'preserved', code_challenge_method: 'S256', code_challenge: createHash('sha256').update(verifier).digest('base64url')});
     const start = await call('/authorize?' + query);
@@ -110,7 +112,7 @@ test('real HTTP OAuth pairing and official SDK Streamable HTTP use the shared MC
     sdk = new Client({name: 'remote-http-contract', version: '1.0.0'});
     // Test uses loopback HTTP and an explicit Host header. Public delivery still
     // requires HTTPS. Device proof and registration are local fixtures.
-    const transport = new StreamableHTTPClientTransport(new URL(address + '/mcp'), {
+    const transport = new StreamableHTTPClientTransport(new URL(address + '/synth'), {
       requestInit: {headers: {Authorization: 'Bearer ' + tokens.access_token}},
       fetch: async (input, init = {}) => {
         const url = new URL(input);
@@ -136,7 +138,7 @@ test('real HTTP OAuth pairing and official SDK Streamable HTTP use the shared MC
     assert.equal(state.structuredContent.phase, 'succeeded');
     assert.equal((await sdk.callTool({name: 'apps_state', arguments: {}})).structuredContent.code, 'connection_required');
     await call('/revoke', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, value: new URLSearchParams({client_id: clientId, token: tokens.refresh_token}).toString()});
-    const denied = await call('/mcp', {...json({jsonrpc: '2.0', id: 99, method: 'tools/list'}), headers: {...json({}).headers, Authorization: 'Bearer ' + tokens.access_token}});
-    assert.equal(denied.status, 401); assert.match(denied.headers['www-authenticate'], /oauth-protected-resource\/mcp/);
+    const denied = await call('/synth', {...json({jsonrpc: '2.0', id: 99, method: 'tools/list'}), headers: {...json({}).headers, Authorization: 'Bearer ' + tokens.access_token}});
+    assert.equal(denied.status, 401); assert.match(denied.headers['www-authenticate'], /oauth-protected-resource\/synth/);
   } finally {await sdk?.close(); router.close(); auth.close(); await remote.close(); await new Promise(resolve => server.close(resolve)); rmSync(directory, {recursive: true, force: true});}
 });

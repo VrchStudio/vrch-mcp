@@ -132,3 +132,23 @@ test('Claude web pairing uses its exact callback and cannot exchange ChatGPT cod
     assert(auth.exchange({grant_type: 'refresh_token', client_id: claudeId, resource, refresh_token: tokens.refresh_token}).access_token);
   } finally {auth.close();}
 });
+
+test('a fresh Synth issuer rejects old service tokens and requires a new pairing', {skip:!supported},async()=>{
+ const old=open(),synthIssuer='https://mcp.example',synthResource=synthIssuer+'/synth';
+ const next=createPairingAuthorization({filename:':memory:',issuer:synthIssuer,resource:synthResource,clients,verifyPairing});
+ try{
+  const verifier=codeVerifier(),request=old.begin(params(verifier));
+  await old.approve(request.id,proof(old.challenge(request.id)));
+  const code=new URL(old.finish(request.id,request.browserSecret).redirect).searchParams.get('code');
+  const tokens=old.exchange(exchange(code,verifier));
+  assert.throws(()=>next.authenticate(tokens.access_token),{code:'invalid_token'});
+  assert.throws(()=>next.exchange({grant_type:'refresh_token',client_id:clientId,resource:synthResource,refresh_token:tokens.refresh_token}),{code:'invalid_grant'});
+  assert.throws(()=>next.begin(params(verifier)),{code:'invalid_request'});
+  const paired=next.begin({...params(verifier),resource:synthResource});
+  await next.approve(paired.id,proof(next.challenge(paired.id)));
+  const result=new URL(next.finish(paired.id,paired.browserSecret).redirect);
+  const fresh=next.exchange(exchange(result.searchParams.get('code'),verifier,{resource:synthResource}));
+  assert.equal(next.authenticate(fresh.access_token).resource,synthResource);
+  assert.equal(result.searchParams.get('iss'),synthIssuer);
+ }finally{old.close();next.close();}
+});

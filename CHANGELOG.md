@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Connect web AI through mcp.vrch.ai/synth with fresh device-approved authorization.
+
 - Identify SDK reference content and explain how to resume a disconnected connection.
 - Clarify hardware contracts and hosted event wait limits.
 

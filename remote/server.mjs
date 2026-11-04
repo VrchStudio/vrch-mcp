@@ -9,7 +9,7 @@ import {createRemoteHTTPHandler} from '../src/remote-http.mjs';
 import {createRegisteredTargetResolver} from './targets.mjs';
 
 const required = name => {const value = process.env[name]; if (!value) throw Error('Missing configuration: ' + name); return value;};
-const issuer = required('VRCH_MCP_ISSUER'), resource = issuer + '/mcp', directory = required('VRCH_MCP_DATA');
+const issuer = required('VRCH_MCP_ISSUER'), resource = issuer + '/synth', directory = required('VRCH_MCP_DATA');
 mkdirSync(directory, {recursive: true, mode: 0o700});
 const key = Buffer.from(readFileSync(required('VRCH_MCP_ENCRYPTION_KEY_FILE'), 'utf8').trim(), 'base64');
 if (key.length !== 32) throw Error('Invalid recovery encryption key.');
