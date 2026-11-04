@@ -60,7 +60,7 @@ docker build -f remote/Dockerfile --build-arg COMMIT=<full-sha> -t vrch-mcp:<sho
 ```
 
 Configure `remote/compose.yaml` using an external, private environment file.
-Set issuer `https://mcp.vrch.ai` and its resource `/synth` on SG. Configure the
+Set issuer `https://mcp-sg.vrch.ai` and its resource `/synth` on SG. Configure the
 trusted Device Manager public directory and signing issuer; mount its public
 Ed25519 verification key only. Generate an independent random 32-byte recovery
 key encoded as base64, owned/readable by container uid 1000. The persistent data
@@ -109,4 +109,4 @@ unverified document or preventing the other verified client from starting.
 A human has completed the Claude web OAuth connection on SG. Device Invite/Allow AI,
 App editing and hardware acceptance remain separate evidence.
 
-Public endpoint: `https://mcp.vrch.ai/synth`, currently served by SG only. The former mcp-sg hostname and /mcp endpoint are retired without redirect or token migration. Start this issuer/resource with a fresh private state directory and recovery key; retain the old stopped state only for rollback. Reconfigure the connector and complete normal human pairing once. Its pairing device is provenance, not an exclusive target: each subsequent registered device still requires its own Invite/Allow and connectionRef. Do not combine first pairing with session approval in this cutover.
+Endpoints are environment-specific: SG testing uses `https://mcp-sg.vrch.ai/synth`; EA uses `https://mcp.vrch.ai/synth` only after its separately authorized deployment. Never point the formal hostname at SG for testing. The old /mcp resource has no redirect or token migration. A changed issuer/resource starts with a fresh private state directory and recovery key; retain old stopped state only for rollback. The pairing device is provenance, not an exclusive target: every subsequent registered device still needs its own Invite/Allow and connectionRef. Do not combine first pairing with session approval in this cutover.

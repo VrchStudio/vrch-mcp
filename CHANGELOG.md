@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Connect web AI through mcp.vrch.ai/synth with fresh device-approved authorization.
+- Use /synth with separate SG test and EA production domains.
 
 - Identify SDK reference content and explain how to resume a disconnected connection.
 - Clarify hardware contracts and hosted event wait limits.
