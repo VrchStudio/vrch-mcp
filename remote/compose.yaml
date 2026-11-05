@@ -3,6 +3,7 @@ services:
     image: ${VRCH_MCP_IMAGE:?Set the image built from the pushed source commit}
     network_mode: host
     restart: unless-stopped
+    stop_grace_period: 30s
     init: true
     read_only: true
     cap_drop: [ALL]

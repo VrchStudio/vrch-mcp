@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Retain approval and request recovery across browser Simulator service updates.
+
 - Connect to independently approved browser Simulators and observe their actual DOM and Canvas layers.
 
 - Notify existing remote conversations when their tool catalogue needs refreshing, keeping the original device authorization.
