@@ -4,6 +4,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {createHash, randomBytes, randomUUID} from 'node:crypto';
 import {lstatSync, chmodSync} from 'node:fs';
 import {dirname, join} from 'node:path';
+import {browserObservationTool,browserCapabilities} from './remote-browser-tools.mjs';
 import {previewTools,capturePreview} from './remote-preview.mjs';
 import {createWorkspaceText, validateWorkspaceText, workspaceTextTools} from './remote-workspace-text.mjs';
 import {hostedCapabilities, hostedInstructions, sdkReference, sdkReferenceTool} from './remote-guidance.mjs';
@@ -18,7 +19,7 @@ const durable = new Set(['apps_create', 'apps_open', 'apps_publish_preview', 'ap
 const hostedExcluded = new Set(['apps_file_export', 'apps_file_commit', 'apps_export_begin', 'apps_import_inspect', 'apps_import_commit']);
 const content = value => [{type: 'text', text: JSON.stringify(value)}];
 
-export async function createRemoteRouter({filename, credentialDirectory, encryptionKey, resolveRegisteredTarget, createClient = createAIClient, waitMs = 20000, pendingWaitMs = 600000, resultDrainMs = 45000, idleMs = 1800000, buildRevision = 'unknown'}) {
+export async function createRemoteRouter({filename, credentialDirectory, encryptionKey, resolveRegisteredTarget, createClient = createAIClient, waitMs = 20000, pendingWaitMs = 600000, resultDrainMs = 45000, idleMs = 1800000, buildRevision = 'unknown', browserTargets = null}) {
   if (typeof resolveRegisteredTarget !== 'function' || !Number.isInteger(waitMs) || waitMs < 1 || waitMs > 20000) throw fail('invalid_configuration');
   const parent = lstatSync(dirname(filename));
   if (!parent.isDirectory() || parent.isSymbolicLink() || parent.uid !== process.getuid() || (parent.mode & 0o077)) throw fail('unsafe_connection_storage');
@@ -52,7 +53,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
   const snapshot = record => ({connectionRef: record.id, phase: record.phase, retryable: false, ...recovery(record),
     ...(record.code ? {code: record.code} : {}), ...(record.phase === 'request_disconnected' ? {authorizationOutcome: 'unknown'} : {}),
     ...(record.phase === 'pending' ? {deadlineKnown: !!active.get(record.id)?.inviteDeadline, ...(active.get(record.id)?.inviteDeadline ? {inviteExpiresAt: active.get(record.id).inviteDeadline} : {})} : {}),
-    ...(record.phase === 'ready' && record.capabilities ? {capabilities: hostedCapabilities(JSON.parse(record.capabilities))} : {})});
+    targetKind: record.device.startsWith('web_') ? 'browser' : 'device', ...(record.phase === 'ready' && record.capabilities ? {capabilities: (record.device.startsWith('web_')?browserCapabilities:hostedCapabilities)(JSON.parse(record.capabilities))} : {})});
   const setState = (id, phase, code = null, capabilities = null) => db.prepare('UPDATE connections SET phase=?,code=?,capabilities=? WHERE id=?').run(phase, code, capabilities && JSON.stringify(capabilities), id);
   const envelopes = (value, result = {}) => ({...result, content: result.content?.length ? result.content : content(value), structuredContent: value});
   function armIdle(entry) {
@@ -82,7 +83,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
     else if (event.type === 'collaboration') {
       if (entry) {entry.inputEpoch=event.epoch;entry.terminalReadable=event.assistantCapabilities?.terminal===true&&!event.private&&!event.passwordRequired;}
       const previous = db.prepare('SELECT phase FROM connections WHERE id=?').get(id)?.phase;
-      setState(id, 'ready', null, event.assistantCapabilities);
+      setState(id, 'ready', null, entry?.kind === 'browser' ? {...event.assistantCapabilities,owner:event.owner,paused:event.paused,approvalId:event.approvalId} : event.assistantCapabilities);
       if (entry && previous !== 'ready') {entry.lastCall = Date.now(); armIdle(entry);}
     }
     else if (event.type === 'ended') {
@@ -103,9 +104,12 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
     attaching.set(record.id, job); return job;
   }
   async function doAttach(identity, record, url, resume, resolved) {
-    const target = resolved || await resolveRegisteredTarget(url, {deviceId: record.device, resume});
+    const browser = record.device.startsWith('web_');
+    if (browser && !browserTargets) throw fail('target_unavailable');
+    const target = resolved || await (browser ? browserTargets.resolve(url, {deviceId:record.device,resume}) : resolveRegisteredTarget(url, {deviceId:record.device,resume}));
     if (closed) throw fail('service_unavailable');
-    if (target.deviceId !== record.device || target.origin !== record.origin || typeof target.WebSocketImpl !== 'function') throw fail('target_unavailable');
+    if (target.deviceId !== record.device || target.origin !== record.origin || (browser ? target.kind !== 'browser' : typeof target.WebSocketImpl !== 'function')) throw fail('target_unavailable');
+    if (browser) return attachBrowser(identity, record, target, resume);
     active.get(record.id)?.shutdown(); active.delete(record.id);
     const pending = new Map(), entry = {requests: 0, lastCall: Date.now()};
     const credentialStore = createRemoteCredentialStore({directory: credentialDirectory, key: encryptionKey,
@@ -143,6 +147,37 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
     if (result.isError) {setState(record.id, 'disconnected', 'connection_failed'); entry.shutdown(); active.delete(record.id);}
     return result;
   }
+  async function attachBrowser(identity, record, target, resume) {
+    active.get(record.id)?.shutdown();
+    const events=[],waiters=new Set(),entry={kind:'browser',requests:0,lastCall:Date.now()};
+    const notify=event=>{
+      if(closed)return;
+      events.push(event);if(events.length>128)events.shift();
+      observe(record.id,event);
+      for(const wake of waiters)wake();waiters.clear();
+    };
+    const channel=browserTargets.attach(target,{connectionRef:record.id,oauthClientId:identity.oauthClientId,resume,onEvent:notify});
+    entry.shutdown=(reason='client_closed')=>{entry.shutdownReason=reason;clearTimeout(entry.pendingTimer);clearTimeout(entry.idleTimer);channel.close(reason);for(const wake of waiters)wake();waiters.clear();};
+    entry.call=async(method,params={})=>{
+      entry.requests++;
+      try {
+        if(method!=='tools/call')throw fail('unsupported_tool');
+        const {name,arguments:values={}}=params;
+        if(name==='terminal_events'){
+          if(!events.length&&(values.waitSeconds??20)>0)await new Promise(resolve=>{const wake=()=>{clearTimeout(timer);waiters.delete(wake);resolve();};const timer=setTimeout(wake,(values.waitSeconds??20)*1000);waiters.add(wake);});
+          return {content:events.splice(0).flatMap(content)};
+        }
+        if(name==='ai_capabilities')return {content:content(snapshot(load(identity,record.id)))};
+        // Browser targets never impersonate a device shell or a native screenshot.
+        if(!['apps_list','apps_state','apps_create','apps_open','apps_read_text','apps_write_text','apps_publish_preview','apps_save','apps_input_targets','apps_control','apps_interface_input','apps_preview_input','apps_operation_status','apps_observe','ai_report'].includes(name))
+          return {isError:true,content:content({code:'unsupported_capability',message:'This connection targets a browser Simulator. Device shell, desktop capture and hardware lifecycle tools are unavailable.'})};
+        return await channel.request(name,values);
+      } catch(error){return {isError:true,content:content({code:error.code||'connection_interrupted',message:error.message||'The browser request did not complete.'})};}
+      finally{entry.requests--;}
+    };
+    active.set(record.id,entry);setState(record.id,resume?'resuming':'connecting');
+    try{await channel.start();}catch(error){notify({type:'ended',code:error.code||'transport_disconnected'});throw error;}
+  }
   const replies = [];
   const catalogBridge = createTerminalMCP({toolCatalog: 'stable', send: message => replies.push(message)});
   await catalogBridge.receive({jsonrpc: '2.0', id: 1, method: 'initialize'});
@@ -151,7 +186,8 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
   initialize.capabilities.tools.listChanged = true;
   initialize.instructions += '\nHosted tools always require the explicit connectionRef. Hosted terminal tools reuse the device terminal capability, current control owner, Private Input and approval checks; this remains an ordinary device user shell, not a project-only sandbox. Read terminal_events for terminal output. Sending input does not confirm execution; never replay shell input after an uncertain response. Device screenshots are not web Preview screenshots; apps_state reports the Preview runtime errors. Use apps_read_text/apps_write_text for bounded UTF-8 source edits in the current workspace. Hosted general file staging is not available; never treat local file paths as uploadable. Pairing does not replace the human Invite AI and Allow AI decisions.';
   initialize.instructions += '\n' + hostedInstructions;
-  const catalog = [...replies[1].result.tools.filter(tool => !tool.name.startsWith('file_') && !hostedExcluded.has(tool.name)), ...workspaceTextTools, sdkReferenceTool, ...previewTools].map(original => {
+  if(browserTargets)initialize.instructions += '\nA browser Simulator is a distinct approved target. It runs and stores Apps in the local browser; it has no device shell, device screenshot or hardware launch. Use apps_observe for honestly labeled DOM/layout, canvas pixel layers and App-reported logs. This is not a full screenshot. Browser disconnection does not queue or replay mutations.';
+  const catalog = [...replies[1].result.tools.filter(tool => !tool.name.startsWith('file_') && !hostedExcluded.has(tool.name)), ...workspaceTextTools, sdkReferenceTool, ...previewTools, ...(browserTargets ? [browserObservationTool] : [])].map(original => {
     const tool = structuredClone(original);
     tool.outputSchema = {type: 'object', properties: {connectionRef: {type: 'string'}, phase: {type: 'string'}, retryable: {type: 'boolean'}}, required: ['phase', 'retryable'], additionalProperties: true};
     if (tool.name === 'terminal_connect') {
@@ -174,17 +210,18 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
       const record = load(identity, args.connectionRef);
       if (['connecting', 'pending', 'approved', 'resuming', 'ready'].includes(record.phase) && active.has(record.id)) return envelopes(snapshot(record));
       if (['removed', 'denied', 'request_disconnected', 'expired', 'cancelled', 'failed'].includes(record.phase)) throw fail('approval_required');
-      await attach(identity, record, record.origin + '/apps/ai', true);
+      await attach(identity, record, record.origin + (record.device.startsWith('web_') ? '/synth/target' : '/apps/ai'), true);
       return envelopes(snapshot(load(identity, record.id)));
     }
     if (args.connectionRef !== undefined || !uuid(args.attemptId) || typeof args.url !== 'string') throw fail('invalid_connection_arguments');
     const url = new URL(args.url);
-    if (url.protocol !== 'https:' || url.username || url.password || url.hash || url.pathname !== '/apps/ai' || !url.searchParams.get('invite')) throw fail('invalid_invitation');
+    if (url.protocol !== 'https:' || url.username || url.password || url.hash || (url.pathname !== '/apps/ai' && !(browserTargets && url.pathname === '/synth/target')) || !url.searchParams.get('invite')) throw fail('invalid_invitation');
     const key = owner(identity), hash = digest(url.href);
     let record = db.prepare('SELECT * FROM connections WHERE owner=? AND attempt=?').get(key, args.attemptId);
     if (record) {if (record.invitation_hash !== hash) throw fail('attempt_conflict'); return envelopes(snapshot(record));}
-    const target = await resolveRegisteredTarget(url.href, {resume: false});
-    if (target.origin !== url.origin || !target.deviceId || typeof target.WebSocketImpl !== 'function') throw fail('target_unavailable');
+    const browser=url.pathname==='/synth/target';
+    const target = await (browser ? browserTargets.resolve(url.href,{resume:false}) : resolveRegisteredTarget(url.href,{resume:false}));
+    if (target.origin !== url.origin || !target.deviceId || (browser ? target.kind!=='browser' || !target.deviceId.startsWith('web_') : typeof target.WebSocketImpl !== 'function' || target.deviceId.startsWith('web_'))) throw fail('target_unavailable');
     record = db.prepare('SELECT * FROM connections WHERE owner=? AND attempt=?').get(key, args.attemptId);
     if (record) {if (record.invitation_hash !== hash) throw fail('attempt_conflict'); return envelopes(snapshot(record));}
     const id = randomBytes(24).toString('base64url');
@@ -200,7 +237,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
   function business(result) {
     let value = result.structuredContent; if (!value) {try {value = JSON.parse(result.content?.[0]?.text);} catch {}}
     const code = result.isError ? (value?.code || /^([a-z_]+):/.exec(result.content?.[0]?.text || '')?.[1] || 'operation_failed') : null;
-    return {phase: result.isError ? ['connection_interrupted', 'operation_pending', 'disconnected', 'transport_disconnected', 'request_timeout'].includes(code) ? 'outcome_unknown' : 'failed' : 'succeeded', retryable: false,
+    return {phase: result.isError ? value?.delivery === 'not_sent' ? 'failed' : value?.phase === 'outcome_unknown' ? 'outcome_unknown' : ['connection_interrupted', 'operation_pending', 'disconnected', 'transport_disconnected', 'request_timeout'].includes(code) ? 'outcome_unknown' : 'failed' : 'succeeded', retryable: false,
       ...(code ? {code, message: (value?.message || result.content?.[0]?.text?.replace(/^[a-z_]+:\s*/, '') || 'Operation failed.').slice(0,1024)} : {}), ...(value && typeof value === 'object' ? {result: value} : {})};
   }
   async function call(identity, name, args) {
@@ -243,6 +280,14 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
     const isText = name === 'apps_read_text' || name === 'apps_write_text';
     if (isText) validateWorkspaceText(name, values);
     const invoke = async () => {
+      if(entry.kind==='browser'){
+        const call=()=>entry.call('tools/call',{name,arguments:values});
+        if(!['apps_control','apps_interface_input','apps_preview_input'].includes(name))return call();
+        const epoch=entry.inputEpoch;
+        const job=(entry.inputTail||Promise.resolve()).catch(()=>{}).then(()=>{if(entry.inputEpoch!==epoch)throw fail('control_changed');return call();});
+        entry.inputTail=job;return job;
+      }
+      if(name==='apps_observe')return {isError:true,content:content({code:'unsupported_capability',message:'This connection is a device. Browser Simulator observation requires its own approved connection.'})};
       if (name === 'apps_preview_snapshot') return capturePreview(entry, values, dirname(filename));
       if (name === 'apps_publish_preview') {
         try {const {workspaceId,expectedRevision,operationId}=values;
@@ -275,7 +320,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
       const previous = db.prepare('SELECT * FROM operations WHERE connection=? AND id=?').get(connectionRef, values.originalOperationId);
       if (previous && previous.action.slice(5) !== values.originalAction) throw fail('operation_conflict');
       if (previous && ['succeeded', 'failed'].includes(previous.phase)) return envelopes(JSON.parse(previous.result));
-      const query = values.originalAction === 'write_text' ? () => entry.call('tools/call', {name, arguments: {...values, originalAction: 'file_commit'}}) : invoke;
+      const query = entry.kind !== 'browser' && values.originalAction === 'write_text' ? () => entry.call('tools/call', {name, arguments: {...values, originalAction: 'file_commit'}}) : invoke;
       const response = await bounded(query(), null), queried = response && business(response);
       const terminal = queried?.result?.status;
       const value = {connectionRef, operationId: values.originalOperationId, retryable: false,

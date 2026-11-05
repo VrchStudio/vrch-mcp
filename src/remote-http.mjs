@@ -66,6 +66,10 @@ export function createRemoteHTTPHandler({auth, resource, handleMCP, sdkValidatio
         send(response, 200, {resource, resource_name: 'Vrch Synth', resource_logo_uri: origin + logoPath, authorization_servers: [metadata.issuer], scopes_supported: ['vrch:mcp'], bearer_methods_supported: ['header']}); return;
       }
       if (request.method === 'GET' && path === '/.well-known/oauth-authorization-server') {send(response, 200, metadata); return;}
+      if (request.method === 'GET' && path === '/synth/target' && /^[A-Za-z0-9_-]{43}$/.test(url.searchParams.get('invite')||'')) {
+        send(response, 200, '<!doctype html><meta charset="utf-8"><title>Vrch Synth invitation</title><p>Send this link to an AI chat with Vrch Synth enabled, then approve its request in My Apps Simulator.</p>',
+          {'Content-Security-Policy':"default-src 'none'; base-uri 'none'; frame-ancestors 'none'",'Referrer-Policy':'no-referrer'});return;
+      }
       if (request.method === 'POST' && path === '/register') {
         if (request.headers['content-type']?.split(';')[0] !== 'application/json') {send(response, 415, {error: 'invalid_request'}); return;}
         let value; try {value = JSON.parse(await body(request, 8192));} catch {send(response, 400, {error: 'invalid_client_metadata'}); return;}

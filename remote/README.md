@@ -87,7 +87,7 @@ Access logging is disabled on this OAuth route to avoid persisting codes.
 The service validates Host and Origin itself; the public edge must retain Origin.
 
 First pairing uses the code shown on the OAuth page. In the already-connected
-My Apps page, choose Connect AI service from its menu, paste the code and approve.
+My Apps page, choose AI Assistant > Authorize MCP Connection, paste the code and approve.
 The code is the existing short-lived pairing request ID; there is no account or
 short-code database. The current device's helper resolves its configured service
 origin and uses the existing signed proof. Legacy pairing links remain valid.
@@ -151,3 +151,35 @@ platform tabs do not replace one another. The previous shared-cookie format is
 accepted for existing in-flight requests only; grants, tokens and connectionRefs
 are unchanged. My Apps approval is distinct from completing the platform OAuth
 exchange and from joining a device through Invite/Allow.
+
+
+## Browser Simulator targets (SG development)
+
+Set `VRCH_MCP_BROWSER_ORIGINS` to an explicit comma-separated HTTPS origin list
+(for the current development page: `https://dev-3090.vrch.ai`). An empty setting
+leaves the browser target feature disabled. The nginx template upgrades
+`/synth/targets` to the same hosted process; it is not a separate content service.
+
+The trusted Simulator tab connects outward and retains its owner credential in
+that browser. Source files, App packages, execution and App data stay local.
+Only approved tool requests/results pass through the service. `browser-targets.sqlite`
+retains target credential hashes, invitation hashes and approval metadata; the
+existing operation journal retains bounded durable outcomes, never project files
+or observation images. Preserve that database together with the existing OAuth
+and connection databases during service updates. Do not rotate the recovery key.
+
+Existing OAuth identities may join a browser invitation, but must receive a new
+human Invite/Allow decision for that target. A user without hardware may approve
+first-time OAuth from the Simulator using the normal pairing-code dialog. This
+proves control of that browser target, not ownership of registered hardware.
+Device proof verification and each device's separate Invite/Allow stay intact.
+
+Browser targets have no terminal, device screenshot or hardware launch. Use the
+additional `apps_observe` tool for explicitly labeled DOM/layout, Canvas pixel
+layers and App-reported logs; it is not a full page screenshot. The original
+`apps_preview_snapshot` remains a native shared web Preview capture for device
+connections. All calls still use an explicit connectionRef, exact instance and
+stable mutation operation IDs. A disconnected browser does not queue/replay writes.
+A live browser owner is never displaced by another socket. Idle unapproved targets
+expire after a day; active approvals remain until revoked, within the configured
+capacity bound. New source and this configuration require SG validation before EA.

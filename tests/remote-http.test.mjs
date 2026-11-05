@@ -53,6 +53,10 @@ test('real HTTP OAuth pairing and official SDK Streamable HTTP use the shared MC
     assert.equal((await call('/synth', json({jsonrpc: '2.0', id: 1, method: 'tools/list'}))).status, 401);
     assert.equal(dispatched, 0);
     assert.equal((await call('/mcp')).status,404);
+    const browserInvitation = await call('/synth/target?invite=' + 'a'.repeat(43));
+    assert.equal(browserInvitation.status,200);
+    assert(browserInvitation.text.includes('My Apps Simulator'));
+    assert(!browserInvitation.text.includes('a'.repeat(43)));
     assert.equal((await call('/.well-known/oauth-protected-resource/mcp')).status,404);
     const sdkMetadata = (await call('/sdk-client.json')).json();
     assert.deepEqual(sdkMetadata.redirect_uris, [issuer + '/sdk-callback']);

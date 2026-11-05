@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Connect to independently approved browser Simulators and observe their actual DOM and Canvas layers.
+
 - Notify existing remote conversations when their tool catalogue needs refreshing, keeping the original device authorization.
 
 - Publish only to the current web Preview and observe a person-shared 2D frame with its actual revision.
