@@ -201,7 +201,7 @@ export function createBrowserTargets({filename, issuer, allowedOrigins, clock = 
     if (binding.calls.size >= maxPending) return Promise.resolve(notSent('busy'));
     const id = token(16), deadlineAt = clock() + callTimeoutMs;
     let frame;
-    try {frame = JSON.stringify({type: 'call', id, connectionRef: binding.connectionRef, approvalId: row.id, epoch: row.epoch, name, arguments: args, deadlineAt});}
+    try {frame = JSON.stringify({type: 'call', id, connectionRef: binding.connectionRef, approvalId: row.id, epoch: row.epoch, name, arguments: args, deadlineAt, timeoutMs: callTimeoutMs});}
     catch {return Promise.resolve(notSent('invalid_request'));}
     if (Buffer.byteLength(frame) > maxCallBytes) return Promise.resolve(notSent('request_too_large'));
     return new Promise(resolve => {
@@ -232,9 +232,9 @@ export function createBrowserTargets({filename, issuer, allowedOrigins, clock = 
       });
       return {url: issuer + '/synth/target?invite=' + invite, expiresAt};
     },
-    decision(session, {requestId, connectionRef, allow}) {
+    decision(session, {requestId, connectionRef, allow, owner = 'human'}) {
       const pending = session.pending;
-      if (typeof allow !== 'boolean' || !pending || pending.requestId !== requestId || pending.binding.connectionRef !== connectionRef) throw fail('request_unavailable');
+      if (typeof allow !== 'boolean' || !['human','ai'].includes(owner) || !pending || pending.requestId !== requestId || pending.binding.connectionRef !== connectionRef) throw fail('request_unavailable');
       const binding = pending.binding;
       if (pending.expiresAt <= clock()) {end(binding, 'invite_expired'); throw fail('request_unavailable');}
       clearTimeout(pending.timer); session.pending = null;
@@ -244,8 +244,8 @@ export function createBrowserTargets({filename, issuer, allowedOrigins, clock = 
         row = transaction(() => {
           if (approvalOf(session.targetId)) throw fail('ai_already_approved');
           const id = token(16);
-          db.prepare("INSERT INTO browser_approvals(id,target,connection_ref,oauth_client,epoch,owner,paused,state,updated) VALUES(?,?,?,?,1,'human',0,'active',?)")
-            .run(id, session.targetId, binding.connectionRef, binding.oauthClientId, clock());
+          db.prepare("INSERT INTO browser_approvals(id,target,connection_ref,oauth_client,epoch,owner,paused,state,updated) VALUES(?,?,?,?,1,?,0,'active',?)")
+            .run(id, session.targetId, binding.connectionRef, binding.oauthClientId, owner, clock());
           db.prepare('DELETE FROM browser_invites WHERE target=?').run(session.targetId);
           return approvalOf(session.targetId);
         });

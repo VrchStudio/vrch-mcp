@@ -6,12 +6,15 @@ import {mkdtempSync, readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {execFileSync} from 'node:child_process';
-import {createHash} from 'node:crypto';
+import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {setTimeout as delay} from 'node:timers/promises';
 import {WebSocket} from 'ws';
-import {DatabaseSync} from 'node:sqlite';
-import {createBrowserTargets, reviewDigest} from '../remote/browser-targets.mjs';
-import {createPairingAuthorization} from '../src/remote-auth.mjs';
+const [major,minor]=process.versions.node.split('.').map(Number);
+const hostedSupported=major>22||major===22&&minor>=13;
+const {createBrowserTargets,reviewDigest}=hostedSupported?await import('../remote/browser-targets.mjs'):{};
+const {createPairingAuthorization}=hostedSupported?await import('../src/remote-auth.mjs'):{};
+const {createRemoteRouter}=hostedSupported?await import('../src/remote-router.mjs'):{};
+const hostedTest=(name,run)=>test(name,{skip:!hostedSupported},run);
 
 const ISSUER = 'https://mcp.example.test', HOST = 'mcp.example.test';
 const ORIGIN = 'https://pages.example.test', ORIGIN2 = 'https://dev-pages.example.test';
@@ -82,7 +85,7 @@ function agent(targets, target, options) {
 }
 const code = result => result.structuredContent?.code;
 
-test('browser targets keep approvals across restart without replaying calls', async () => {
+hostedTest('browser targets keep approvals across restart without replaying calls', async () => {
   const h = await harness();
   try {
     assert.equal(await rejected(h.port, {path: '/synth/other'}), 404);
@@ -128,7 +131,7 @@ test('browser targets keep approvals across restart without replaying calls', as
 
     const first = ai.request('apps_state', {probe: 1});
     const frame = await a.next(message => message.type === 'call');
-    assert.deepEqual({...frame, id: 0, deadlineAt: 0}, {type: 'call', id: 0, connectionRef: REF1, approvalId: decision.result.grant.approvalId, epoch: 1, name: 'apps_state', arguments: {probe: 1}, deadlineAt: 0});
+    assert.deepEqual({...frame, id: 0, deadlineAt: 0}, {type: 'call', id: 0, connectionRef: REF1, approvalId: decision.result.grant.approvalId, epoch: 1, name: 'apps_state', arguments: {probe: 1}, deadlineAt: 0, timeoutMs: 600});
     a.send({type: 'result', id: frame.id, result: {content: [{type: 'text', text: 'RESULT_MARKER'}, {type: 'image', data: PNG, mimeType: 'image/png'}], structuredContent: {ok: true}, extra: 1}});
     assert.deepEqual(await first, {content: [{type: 'text', text: 'RESULT_MARKER'}, {type: 'image', data: PNG, mimeType: 'image/png'}], structuredContent: {ok: true}});
 
@@ -206,7 +209,7 @@ test('browser targets keep approvals across restart without replaying calls', as
   } finally {h.stop();}
 });
 
-test('pairing uses one reviewed challenge and a one-time internal browser proof', async () => {
+hostedTest('pairing uses one reviewed challenge and a one-time internal browser proof', async () => {
   const h = await harness();
   const redirect = 'https://chatgpt.com/connector_platform_oauth_redirect', verifier = 'v'.repeat(43);
   const auth = createPairingAuthorization({filename: ':memory:', issuer: ISSUER, resource: ISSUER + '/synth',
@@ -257,7 +260,7 @@ test('pairing uses one reviewed challenge and a one-time internal browser proof'
   } finally {h.stop(); auth.close();}
 });
 
-test('public entry bounds registration, first frame and control frame size', async () => {
+hostedTest('public entry bounds registration, first frame and control frame size', async () => {
   const h = await harness({registrationLimit: 2, helloTimeoutMs: 150, maxControlBytes: 1024, inviteTtlMs: 150});
   try {
     const a = await browser(h.port);
@@ -287,7 +290,7 @@ test('public entry bounds registration, first frame and control frame size', asy
 });
 
 
-test('a live owner cannot be replaced; idle unapproved targets expire without deleting approvals', async () => {
+hostedTest('a live owner cannot be replaced; idle unapproved targets expire without deleting approvals', async () => {
   let now=Date.now();const h=await harness({clock:()=>now,maxTargets:2,idleTargetMs:1000,registrationLimit:20});
   try {
     const a=await browser(h.port),b=await browser(h.port);
@@ -305,4 +308,28 @@ test('a live owner cannot be replaced; idle unapproved targets expire without de
     const expired=await browser(h.port,{hello:{targetId:b.welcome.targetId,secret:b.welcome.secret}});
     assert.equal(expired.welcome.code,'target_unauthorized');
   } finally {h.stop();}
+});
+
+hostedTest('router recovers only a durable browser approval after interruption before the ready callback', async()=>{
+  const h=await harness();let router,drop=true;
+  const identity={issuer:ISSUER,principal:'browser-test-person',oauthClientId:CID},key=randomBytes(32);
+  const make=()=>createRemoteRouter({filename:join(h.dir,'router.sqlite'),credentialDirectory:join(h.dir,'credentials'),encryptionKey:key,
+    resolveRegisteredTarget:async()=>{throw Error('Unexpected device lookup');},browserTargets:{resolve:(...args)=>h.targets.resolve(...args),attach:(target,options)=>h.targets.attach(target,{...options,onEvent:event=>{if(drop&&['ai_approved','collaboration'].includes(event.type))return;options.onEvent(event);}})}});
+  let sequence=0;const call=async(name,args)=>(await router.handle(identity,{jsonrpc:'2.0',id:++sequence,method:'tools/call',params:{name,arguments:args}})).result.structuredContent;
+  try{
+    router=await make();let owner=await browser(h.port,{hello:{capabilities:{apps:true}}});const credential={targetId:owner.welcome.targetId,secret:owner.welcome.secret,capabilities:{apps:true}};
+    const invite=(await owner.call('invite')).result;
+    const joined=await call('terminal_connect',{url:invite.url,attemptId:randomUUID()}),ref=joined.connectionRef;
+    const request=await owner.next(m=>m.type==='ai_join');await owner.call('decision',{requestId:request.requestId,connectionRef:ref,allow:true});
+    assert.equal((await call('terminal_events',{connectionRef:ref,waitSeconds:0})).phase,'pending');
+    router.close();h.restart();await owner.closed;drop=false;router=await make();owner=await browser(h.port,{hello:credential});
+    assert.equal((await call('terminal_events',{connectionRef:ref,waitSeconds:0})).resumable,true);
+    assert.equal((await call('terminal_connect',{connectionRef:ref,resume:true})).phase,'ready');
+    assert.equal(owner.welcome.grant.connectionRef,ref);assert(!owner.queue.some(m=>m.type==='ai_join'));
+    await owner.call('revoke',{connectionRef:ref});const nextInvite=(await owner.call('invite')).result;
+    const pending=await call('terminal_connect',{url:nextInvite.url,attemptId:randomUUID()});await owner.next(m=>m.type==='ai_join');
+    router.close();h.restart();await owner.closed;router=await make();owner=await browser(h.port,{hello:credential});
+    assert.equal(owner.welcome.grant,null);
+    const unapproved=await call('terminal_connect',{connectionRef:pending.connectionRef,resume:true});assert.equal(unapproved.phase,'denied');assert.equal(unapproved.resumable,false);assert(!owner.queue.some(m=>m.type==='ai_join'));
+  }finally{router?.close();h.stop();}
 });

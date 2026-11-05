@@ -47,8 +47,8 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
     const value = db.prepare('SELECT * FROM connections WHERE id=? AND owner=?').get(reference, owner(identity));
     if (!value) throw fail('context_mismatch'); return value;
   };
-  const resumable = record => record.phase === 'disconnected' && ['transport_disconnected','idle_timeout','service_restarted','client_closed'].includes(record.code);
-  const recovery = record => ({resumable:resumable(record),...(resumable(record)?{message:'Resume this original connectionRef with terminal_connect({connectionRef,resume:true}); retryable:false prohibits automatic replay of the interrupted tool call. Resume still checks the retained device authorization.'}:{})});
+  const resumable = record => record.phase === 'disconnected' && ['transport_disconnected','idle_timeout','service_restarted','client_closed'].includes(record.code) || record.device.startsWith('web_') && record.phase === 'request_disconnected';
+  const recovery = record => ({resumable:resumable(record),...(resumable(record)?{message:'Resume this original connectionRef with terminal_connect({connectionRef,resume:true}); retryable:false prohibits automatic replay of the interrupted tool call. Resume still checks the retained target authorization.'}:{})});
   const reference = {text:sdkReference,size:Buffer.byteLength(sdkReference),sha256:digest(sdkReference),reviewedPagesRevision:'c59300c5',serviceRevision:buildRevision};
   const snapshot = record => ({connectionRef: record.id, phase: record.phase, retryable: false, ...recovery(record),
     ...(record.code ? {code: record.code} : {}), ...(record.phase === 'request_disconnected' ? {authorizationOutcome: 'unknown'} : {}),
@@ -209,7 +209,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
       if (args.url !== undefined || args.attemptId !== undefined) throw fail('invalid_connection_arguments');
       const record = load(identity, args.connectionRef);
       if (['connecting', 'pending', 'approved', 'resuming', 'ready'].includes(record.phase) && active.has(record.id)) return envelopes(snapshot(record));
-      if (['removed', 'denied', 'request_disconnected', 'expired', 'cancelled', 'failed'].includes(record.phase)) throw fail('approval_required');
+      if (['removed', 'denied', 'expired', 'cancelled', 'failed'].includes(record.phase) || record.phase === 'request_disconnected' && !record.device.startsWith('web_')) throw fail('approval_required');
       await attach(identity, record, record.origin + (record.device.startsWith('web_') ? '/synth/target' : '/apps/ai'), true);
       return envelopes(snapshot(load(identity, record.id)));
     }

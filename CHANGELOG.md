@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-- Retain approval and request recovery across browser Simulator service updates.
+- Recover approved browser sessions after interrupted handshakes.
+
+- Keep browser calls usable when the computer clock differs.
 
 - Connect to independently approved browser Simulators and observe their actual DOM and Canvas layers.
 
