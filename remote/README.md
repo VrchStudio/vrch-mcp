@@ -183,3 +183,21 @@ stable mutation operation IDs. A disconnected browser does not queue/replay writ
 A live browser owner is never displaced by another socket. Idle unapproved targets
 expire after a day; active approvals remain until revoked, within the configured
 capacity bound. New source and this configuration require SG validation before EA.
+
+
+The hosted `apps_observe` also reads the actual maker Preview through its existing
+approved device connection after normal Components/Runtime installation. It uses
+bounded `preview_observe_*` requests and `app-observation` File V2 results (up to
+four 1 MiB PNG layers, 6 MiB total JSON), checks the exact binding and authorization
+again after transfer, and removes transient bytes. No Share Preview, second
+browser invitation or device desktop capture is involved. `apps_state` reports
+`previewObservation` readiness and the requesting AI's `lastObservation`; absent
+support is an honest unavailable result. This tool also retains the independent
+browser-target path. The catalog remains 29 tools.
+
+On an approved maker connection, explicit `apps_publish_preview` may prepare and
+show the AI-selected workspace in the person's web Preview while AI holds control;
+`apps_open` alone still selects only the AI workspace. Failed candidates retain
+the previous applied instance. Saved packages and device running revisions are
+unchanged by Preview-only publication and observation. The original native PNG
+`apps_preview_snapshot` contract remains separate and still requires sharing.

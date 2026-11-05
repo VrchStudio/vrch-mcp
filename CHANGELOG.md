@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Observe the My Apps web Preview through its existing AI connection without screen sharing.
+
 - Recover approved browser sessions after interrupted handshakes.
 
 - Keep browser calls usable when the computer clock differs.

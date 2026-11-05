@@ -5,7 +5,7 @@ import {createHash, randomBytes, randomUUID} from 'node:crypto';
 import {lstatSync, chmodSync} from 'node:fs';
 import {dirname, join} from 'node:path';
 import {browserObservationTool,browserCapabilities} from './remote-browser-tools.mjs';
-import {previewTools,capturePreview} from './remote-preview.mjs';
+import {previewTools,capturePreview,observePreview} from './remote-preview.mjs';
 import {createWorkspaceText, validateWorkspaceText, workspaceTextTools} from './remote-workspace-text.mjs';
 import {hostedCapabilities, hostedInstructions, sdkReference, sdkReferenceTool} from './remote-guidance.mjs';
 import {createAIClient} from './client.mjs';
@@ -128,6 +128,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
         } catch {queueMicrotask(() => entry.shutdown());}}});
       entry.appRequest = (...args) => client.appsRequest(...args);
       entry.downloadPreview = (path,ticket) => client.downloadFile(path,{purpose:'app-preview',resource:{ticket},maxBytes:1024*1024});
+      entry.downloadObservation = (path,ticket) => client.downloadFile(path,{purpose:'app-observation',resource:{ticket},maxBytes:6*1024*1024});
       const capabilities = client.capabilities;
       client.capabilities = () => hostedCapabilities(capabilities());
       const input = client.input;
@@ -187,7 +188,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
   initialize.instructions += '\nHosted tools always require the explicit connectionRef. Hosted terminal tools reuse the device terminal capability, current control owner, Private Input and approval checks; this remains an ordinary device user shell, not a project-only sandbox. Read terminal_events for terminal output. Sending input does not confirm execution; never replay shell input after an uncertain response. Device screenshots are not web Preview screenshots; apps_state reports the Preview runtime errors. Use apps_read_text/apps_write_text for bounded UTF-8 source edits in the current workspace. Hosted general file staging is not available; never treat local file paths as uploadable. Pairing does not replace the human Invite AI and Allow AI decisions.';
   initialize.instructions += '\n' + hostedInstructions;
   if(browserTargets)initialize.instructions += '\nA browser Simulator is a distinct approved target. It runs and stores Apps in the local browser; it has no device shell, device screenshot or hardware launch. Read apps_input_targets, use apps_control for K4E4 and apps_interface_input with target preview and event guide_start for Guide Start. Use apps_observe for honestly labeled DOM/layout, canvas pixel layers and App-reported logs. This is not a full screenshot. Browser disconnection does not queue or replay mutations.';
-  const catalog = [...replies[1].result.tools.filter(tool => !tool.name.startsWith('file_') && !hostedExcluded.has(tool.name)), ...workspaceTextTools, sdkReferenceTool, ...previewTools, ...(browserTargets ? [browserObservationTool] : [])].map(original => {
+  const catalog = [...replies[1].result.tools.filter(tool => !tool.name.startsWith('file_') && !hostedExcluded.has(tool.name)), ...workspaceTextTools, sdkReferenceTool, ...previewTools, browserObservationTool].map(original => {
     const tool = structuredClone(original);
     tool.outputSchema = {type: 'object', properties: {connectionRef: {type: 'string'}, phase: {type: 'string'}, retryable: {type: 'boolean'}}, required: ['phase', 'retryable'], additionalProperties: true};
     if (tool.name === 'terminal_connect') {
@@ -287,7 +288,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
         const job=(entry.inputTail||Promise.resolve()).catch(()=>{}).then(()=>{if(entry.inputEpoch!==epoch)throw fail('control_changed');return call();});
         entry.inputTail=job;return job;
       }
-      if(name==='apps_observe')return {isError:true,content:content({code:'unsupported_capability',message:'This connection is a device. Browser Simulator observation requires its own approved connection.'})};
+      if(name==='apps_observe')return observePreview(entry,values,dirname(filename));
       if (name === 'apps_preview_snapshot') return capturePreview(entry, values, dirname(filename));
       if (name === 'apps_publish_preview') {
         try {const {workspaceId,expectedRevision,operationId}=values;

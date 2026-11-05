@@ -43,3 +43,46 @@ export async function capturePreview(entry,values,directory){
   } catch(error){return {isError:true,content:[{type:'text',text:(error.code||'capture_failed')+': '+(error.code==='capture_not_shared'?'Ask the person to enable Share Preview in the 2D maker.':error.message)}]};}
   finally {if(ticket)await entry.appRequest('preview_capture_release',{ticket}).catch(()=>{});if(dir)await rm(dir,{recursive:true,force:true});entry.requests--;entry.snapshotPending=false;}
 }
+
+
+// Structured observation from the existing maker connection, never device pixels.
+export function decodePreviewObservation(bytes,metadata,values){
+  if(bytes.length>6*1024*1024)throw fail('observe_too_large');
+  let payload;try{payload=JSON.parse(bytes.toString('utf8'));}catch{throw fail('observe_invalid');}
+  const {result,images}=payload||{},binding=result?.binding;
+  if(result?.kind!=='in_frame_observation'||result.fullScreenshot!==false||!binding||binding.mode!=='preview'||
+      binding.instanceId!==values.instanceId||binding.generation!==values.generation||binding.revision!==values.expectedRevision||binding.appId!==metadata.appId||
+      !Array.isArray(result.dom?.nodes)||result.dom.nodes.length>800||!Array.isArray(result.canvases)||result.canvases.length>4||!Array.isArray(images)||images.length>4)throw fail('observe_invalid');
+  for(const image of images){
+    if(image?.type!=='image'||image.mimeType!=='image/png'||typeof image.data!=='string'||image.data.length>1398104)throw fail('observe_invalid');
+    const png=Buffer.from(image.data,'base64');
+    if(png.toString('base64')!==image.data||png.length<24||png.length>1024*1024||png.subarray(0,8).toString('hex')!=='89504e470d0a1a0a'||png.subarray(12,16).toString()!=='IHDR'||!png.readUInt32BE(16)||!png.readUInt32BE(20)||png.readUInt32BE(16)>1024||png.readUInt32BE(20)>1024)throw fail('observe_invalid');
+  }
+  for(const canvas of result.canvases)if(canvas.image!==null&&(canvas.image?.source!=='canvas-pixels'||!Number.isInteger(canvas.image.contentIndex)||canvas.image.contentIndex<1||canvas.image.contentIndex>images.length))throw fail('observe_invalid');
+  return {result,images};
+}
+export async function observePreview(entry,values,directory){
+  if(entry.snapshotPending)throw fail('capture_busy');
+  entry.snapshotPending=true;entry.requests++;let ticket,dir;
+  try{
+    const {workspaceId,instanceId,generation,expectedRevision,maxSide=512}=values;
+    if(!uuid(instanceId)||!Number.isSafeInteger(generation)||generation<1||!uuid(workspaceId)||!/^[a-f0-9]{64}$/.test(expectedRevision||'')||!Number.isInteger(maxSide)||maxSide<1||maxSide>1024)throw fail('invalid_preview_binding');
+    ({ticket}=await entry.appRequest('preview_observe_begin',{instanceId,generation,maxSide},{workspaceId,expectedRevision}));
+    const deadline=Date.now()+20000;let metadata;
+    while(Date.now()<deadline){const status=await entry.appRequest('preview_observe_read',{ticket});
+      if(status.phase==='failed')throw fail(status.code);
+      if(status.phase==='ready'){metadata={...status.metadata,...status.metadata?.binding};break;}
+      await new Promise(resolve=>setTimeout(resolve,150));
+    }
+    if(!metadata)throw fail('observe_timeout');
+    if(metadata.source!=='web-preview-observation'||metadata.instanceId!==instanceId||metadata.generation!==generation||metadata.revision!==expectedRevision||metadata.workspaceId!==workspaceId||!Number.isSafeInteger(metadata.size)||metadata.size<2||metadata.size>6*1024*1024)throw fail('observe_invalid');
+    dir=await mkdtemp(join(directory,'workspace-transfers','observation-'));const path=join(dir,'observation.json');
+    try{await entry.downloadObservation(path,ticket);}catch(error){if(!['transfer_conflict','unsupported_purpose'].includes(error.code))await entry.call('tools/call',{name:'file_cancel',arguments:{}}).catch(()=>{});throw error;}
+    const bytes=await readFile(path);if(bytes.length!==metadata.size||digest(bytes)!==metadata.sha256)throw fail('hash_mismatch');
+    const {result,images}=decodePreviewObservation(bytes,metadata,values),final=await entry.appRequest('preview_observe_read',{ticket});
+    if(final.phase!=='ready'||final.metadata?.sha256!==metadata.sha256)throw fail('capture_changed');
+    await entry.appRequest('preview_observe_release',{ticket});ticket=null;
+    return {content:[...content(result),...images],structuredContent:result};
+  }catch(error){return {isError:true,content:content({code:error.code||'observe_failed',message:error.message})};}
+  finally{if(ticket)await entry.appRequest('preview_observe_release',{ticket}).catch(()=>{});if(dir)await rm(dir,{recursive:true,force:true});entry.requests--;entry.snapshotPending=false;}
+}
