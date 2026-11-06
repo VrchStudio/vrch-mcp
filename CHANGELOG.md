@@ -5,6 +5,7 @@
 ## Hosted 0.1.0 - 2026-11-06 (prepared)
 
 - Explain default App icons and missing-artwork warnings in the SDK reference.
+- Require the client fix that keeps official App artwork from displaying twice.
 
 - Prepare Hosted Remote MCP 0.1.0 with an explicit EA deployment preview.
 - Keep reconnect release checks reliable on slower hosts.
