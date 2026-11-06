@@ -301,7 +301,16 @@ hostedTest('a live owner cannot be replaced; idle unapproved targets expire with
     const join=await a.next(m=>m.type==='ai_join');await a.call('decision',{requestId:join.requestId,connectionRef:REF1,allow:true});
     await ai.until(e=>e.type==='collaboration');
     const full=await browser(h.port);assert.equal(full.welcome.code,'capacity');assert.equal(await full.closed,4503);
-    a.ws.close();b.ws.close();await Promise.all([a.closed,b.closed]);now+=2000;
+    // A client-side close only proves the closing handshake reached this peer.
+    // Wait for the service to detach each session: the approved target ends its
+    // bound AI, and the unapproved target ends a pending join request.
+    const inviteB=(await b.call('invite')).result;
+    const joiningB=agent(h.targets,await h.targets.resolve(inviteB.url),{connectionRef:REF2});joiningB.start();
+    await b.next(m=>m.type==='ai_join');
+    a.ws.close();b.ws.close();await Promise.all([a.closed,b.closed]);
+    assert.equal((await ai.ended()).code,'transport_disconnected');
+    assert.equal((await joiningB.ended()).code,'request_disconnected');
+    now+=2000;
     const c=await browser(h.port);assert.equal(c.welcome.type,'hello');
     const restored=await browser(h.port,{hello:{targetId:a.welcome.targetId,secret:a.welcome.secret}});
     assert.equal(restored.welcome.grant.connectionRef,REF1);

@@ -134,12 +134,22 @@ test('lost response and server restart preserve original operation IDs without r
     assert.equal((await f.call('apps_state', {connectionRef: reference})).structuredContent.code, 'service_restarted');
     await f.call('terminal_connect', {connectionRef: reference, resume: true});
     await until(() => f.remote.frames.some(frame => frame.type === 'ai_resume'));
-    for (let i = 0; i < 100; i++) {
-      if ((await f.call('terminal_events', {connectionRef: reference, waitSeconds: 0})).structuredContent.phase === 'ready') break;
+    let phase;
+    for (let i = 0; i < 100 && phase !== 'ready'; i++) {
+      phase = (await f.call('terminal_events', {connectionRef: reference, waitSeconds: 0})).structuredContent.phase;
+      if (phase !== 'ready') await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    assert.equal(phase, 'ready');
+    assert.equal((await f.call('apps_publish', args)).structuredContent.phase, 'outcome_unknown');
+    // The fixture's 5 ms wait bound also applies to the device status query, so a
+    // slow round trip legitimately reports outcome_unknown: re-read the same
+    // receipt until the device answers. No query may send the publish again.
+    let status;
+    for (let i = 0; i < 200; i++) {
+      status = await f.call('apps_operation_status', {connectionRef: reference, originalOperationId: operationId, originalAction: 'publish'});
+      if (status.structuredContent.phase !== 'outcome_unknown') break;
       await new Promise(resolve => setTimeout(resolve, 10));
     }
-    assert.equal((await f.call('apps_publish', args)).structuredContent.phase, 'outcome_unknown');
-    const status = await f.call('apps_operation_status', {connectionRef: reference, originalOperationId: operationId, originalAction: 'publish'});
     assert.equal(status.structuredContent.phase, 'succeeded');
     assert.equal(status.structuredContent.result.operationId, operationId);
     assert.equal(f.remote.frames.filter(frame => frame.action === 'publish').length, 1);

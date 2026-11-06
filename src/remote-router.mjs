@@ -25,7 +25,7 @@ const observationRetry = (name,code) => name==='apps_observe'&&['capture_busy','
   ? {retryable:true,retryAfterMs:250,message:'Another Preview observation is in progress. Wait for it to finish, read the current binding, then retry this read once. Do not run parallel captures.'} : {};
 
 
-export async function createRemoteRouter({filename, credentialDirectory, encryptionKey, resolveRegisteredTarget, createClient = createAIClient, waitMs = 20000, pendingWaitMs = 600000, resultDrainMs = 45000, idleMs = 1800000, buildRevision = 'unknown', browserTargets = null}) {
+export async function createRemoteRouter({filename, credentialDirectory, encryptionKey, resolveRegisteredTarget, createClient = createAIClient, waitMs = 20000, pendingWaitMs = 600000, resultDrainMs = 45000, idleMs = 1800000, buildRevision = 'unknown', serverVersion = '0.0.0-dev', browserTargets = null}) {
   if (typeof resolveRegisteredTarget !== 'function' || !Number.isInteger(waitMs) || waitMs < 1 || waitMs > 20000) throw fail('invalid_configuration');
   const parent = lstatSync(dirname(filename));
   if (!parent.isDirectory() || parent.isSymbolicLink() || parent.uid !== process.getuid() || (parent.mode & 0o077)) throw fail('unsafe_connection_storage');
@@ -189,7 +189,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
   const catalogBridge = createTerminalMCP({toolCatalog: 'stable', send: message => replies.push(message)});
   await catalogBridge.receive({jsonrpc: '2.0', id: 1, method: 'initialize'});
   await catalogBridge.receive({jsonrpc: '2.0', id: 2, method: 'tools/list'});
-  const initialize = {...replies[0].result, serverInfo: {name: 'vrch-mcp-remote', version: '0.1.7-remote-dev' + (buildRevision === 'unknown' ? '' : '+' + buildRevision)}};
+  const initialize = {...replies[0].result, serverInfo: {name: 'vrch-mcp-remote', version: serverVersion + (buildRevision === 'unknown' ? '' : '+' + buildRevision)}};
   initialize.capabilities.tools.listChanged = true;
   initialize.instructions += '\nHosted tools always require the explicit connectionRef. Hosted terminal tools reuse the device terminal capability, current control owner, Private Input and approval checks; this remains an ordinary device user shell, not a project-only sandbox. Read terminal_events for terminal output. Sending input does not confirm execution; never replay shell input after an uncertain response. Device screenshots are not web Preview screenshots; apps_state reports the Preview runtime errors. Use apps_read_text/apps_write_text for bounded UTF-8 source edits in the current workspace. Hosted general file staging is not available; never treat local file paths as uploadable. Pairing does not replace the human Invite AI and Allow AI decisions.';
   initialize.instructions += '\n' + hostedInstructions;

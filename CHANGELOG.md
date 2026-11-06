@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## Hosted 0.1.0 - 2026-11-06 (prepared)
+
+- Prepare Hosted Remote MCP 0.1.0 with an explicit EA deployment preview.
+- Keep reconnect release checks reliable on slower hosts.
+
 - Return complete App source and SDK guidance to clients that read text content.
 - Let busy Preview observations be retried without replaying edits or input.
 

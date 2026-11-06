@@ -1,4 +1,4 @@
-# Render MCP_HOST before installation. TLS terminates at the existing SG edge.
+# Render MCP_HOST before installation. TLS terminates at the existing SG or EA edge.
 # This file belongs in nginx's http context; access logs must not retain OAuth codes.
 limit_req_zone $binary_remote_addr zone=vrch_mcp_auth:1m rate=5r/s;
 server {

@@ -1,8 +1,6 @@
-# Hosted Remote MCP (development)
+# Hosted Remote MCP 0.1.0
 
-This private service package adds Streamable HTTP and device-approved OAuth for
-ChatGPT, Claude and Google web clients (actual Gemini acceptance pending). It is separate from the published dependency-free STDIO package (0.1.7).
-It is not a published MCP release or a claim of ChatGPT/device acceptance.
+This separately versioned, private service package adds Streamable HTTP and device-approved OAuth. SG has real ChatGPT/Codex and Claude connections; Claude and the installed SG plugin have completed My Apps editing, observation and device checks. Gemini automatic registration reached the pairing page; its complete OAuth/tool acceptance is still pending. The dependency-free local STDIO release remains 0.1.7. EA is prepared separately and is not deployed. See [release preparation](RELEASE.md).
 
 Use Node 22.23.4 and `npm ci --prefix remote --omit=dev --ignore-scripts`.
 The hosted-only `ws` dependency pins a public DNS result into the TLS connection,
@@ -14,9 +12,7 @@ and `apps_write_text` for UTF-8 source files up to 64 KiB. Terminal tools reuse 
 Read a file with explicit `connectionRef`, `workspaceId` and relative `path`.
 The SDK reference also returns `size` (UTF-8 bytes), `sha256`, `reviewedPagesRevision` and `serviceRevision` (the image build commit, or `unknown` in an unlabelled local run). Its digest identifies the exact text independently of a cached client tool description.
 
-The source is `structuredContent.result.text`, alongside its verified SHA-256
-and size. The SDK reference body uses the same field. A short content block
-avoids duplicating large source text; structured-only hosts receive the full body. Write with that SHA as `expectedSha256` (null only
+Source and SDK bodies are returned both as complete plain `content` text blocks and as `structuredContent.result.text`, alongside SHA-256 and UTF-8 byte size. This supports clients that expose only text blocks. Write with that SHA as `expectedSha256` (null only
 for a new file), `content` and a fresh `operationId`. Each file uses existing File
 V2 transfer plus atomic workspace commit. There is no whole-project transaction:
 read `apps_state` for the new draftRevision before publishing/saving. An uncertain
@@ -57,10 +53,7 @@ human Private Input remains available; never substitute ordinary input for a
 credential command. This change requires no new pairing or device grant.
 
 After changing the catalog during development, verify the actual client's Tool
-permissions includes the text tools and SDK reference. The current JSON-only HTTP
-transport does not advertise tools/listChanged or deliver background SSE events;
-do not claim a list_changed notification refreshed Claude. Use the host's normal
-catalog refresh and retain OAuth/connectionRef where supported. Removing and pairing
+permissions includes the text tools and SDK reference. The service advertises tools/listChanged and supports an authenticated GET notification stream. A client may still freeze an existing conversation's catalogue; use its normal tool refresh and retain OAuth/connectionRef. Runtime fixes behind existing tools take effect without a catalogue refresh. Removing and pairing
 a connector again creates a new identity and is not a transparent refresh. A service
 restart reports service_restarted and supports explicit resume of the original
 connection; idle cleanup reports idle_timeout. Neither is invitation expiration.
@@ -99,7 +92,7 @@ a new identity; ordinary device switching does not require re-pairing.
 Before changing SG, record the current affected image/config and preserve its
 private state. Recreate only the MCP service and, when its new attestation route
 is needed, Device Manager with `--no-deps`. No database migration is required.
-EA has no deployment authorization. Check discovery, unauthenticated 401,
+EA preparation is authorized; deployment is not. Check discovery, unauthenticated 401,
 OAuth denial/approval, cross-identity refusal, restart and lost-response queries.
 Local tests use a real HTTP/SDK/WebSocket boundary with a simulated device; real
 ChatGPT, human decisions, Components/Runtime and physical App results remain
@@ -118,8 +111,7 @@ in `remote/clients.mjs`. Only their exact hosted callbacks are enabled; native
 Claude Code callbacks are outside this slice. A failed metadata fetch disables
 that client's new authorization on this process start, without trusting an
 unverified document or preventing the other verified client from starting.
-A human has completed the Claude web OAuth connection on SG. Device Invite/Allow AI,
-App editing and hardware acceptance remain separate evidence.
+Real Claude web acceptance on SG includes OAuth, retained-reference resume after updates, complete source/SDK reads, Preview observation, publishing/saving, device input and failed-update recovery. Test devices 110 and 130 retained packages and App data.
 
 Endpoints are environment-specific: SG testing uses `https://mcp-sg.vrch.ai/synth`; EA uses `https://mcp.vrch.ai/synth` only after its separately authorized deployment. Never point the formal hostname at SG for testing. The old /mcp resource has no redirect or token migration. A changed issuer/resource starts with a fresh private state directory and recovery key; retain old stopped state only for rollback. The pairing device is provenance, not an exclusive target: every subsequent registered device still needs its own Invite/Allow and connectionRef. Do not combine first pairing with session approval in this cutover.
 
@@ -201,3 +193,5 @@ show the AI-selected workspace in the person's web Preview while AI holds contro
 the previous applied instance. Saved packages and device running revisions are
 unchanged by Preview-only publication and observation. The original native PNG
 `apps_preview_snapshot` contract remains separate and still requires sharing.
+
+A retained AI connection belongs to one approved My Apps access session. Refreshing that same tab and ordinary service/agent restarts preserve it. Ending or replacing the human access session ends its AI approval; the old connectionRef must not resume into a replacement session. OAuth connector authorization is separate. `resumable:true` offers an attempt against retained device authorization, not permission to resurrect ended access.

@@ -10,6 +10,7 @@ import {createBrowserTargets} from './browser-targets.mjs';
 import {createRegisteredTargetResolver} from './targets.mjs';
 
 const required = name => {const value = process.env[name]; if (!value) throw Error('Missing configuration: ' + name); return value;};
+const version = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version;
 const issuer = required('VRCH_MCP_ISSUER'), resource = issuer + '/synth', directory = required('VRCH_MCP_DATA');
 mkdirSync(directory, {recursive: true, mode: 0o700});
 const key = Buffer.from(readFileSync(required('VRCH_MCP_ENCRYPTION_KEY_FILE'), 'utf8').trim(), 'base64');
@@ -25,7 +26,7 @@ const deviceVerifier=createDevicePairingVerifier({publicKey:readFileSync(require
 const auth = createPairingAuthorization({filename: join(directory, 'auth.sqlite'), issuer, resource, clients,
   verifyPairing: (expected,proof)=>proof?.kind==='vrch-browser-target-v1'&&browserTargets?browserTargets.verifyPairing(expected,proof):deviceVerifier(expected,proof)});
 browserTargets?.bindPairing(auth);
-const router = await createRemoteRouter({browserTargets,buildRevision:process.env.VRCH_MCP_BUILD || 'unknown',filename: join(directory, 'connections.sqlite'), credentialDirectory: join(directory, 'credentials'), encryptionKey: key,
+const router = await createRemoteRouter({browserTargets,serverVersion:version,buildRevision:process.env.VRCH_MCP_BUILD || 'unknown',filename: join(directory, 'connections.sqlite'), credentialDirectory: join(directory, 'credentials'), encryptionKey: key,
   resolveRegisteredTarget: createRegisteredTargetResolver({directoryURL: required('VRCH_MCP_DIRECTORY_URL')})});
 const authMetadata = auth.metadata;
 auth.metadata = () => ({...authMetadata(), client_id_metadata_document_supported: true});

@@ -5,7 +5,9 @@ RUN npm ci --prefix remote --omit=dev --ignore-scripts && npm cache clean --forc
 COPY src ./src
 COPY remote/*.mjs ./remote/
 ARG COMMIT=unknown
-LABEL org.opencontainers.image.revision="${COMMIT}"
+ARG VERSION=unversioned
+LABEL org.opencontainers.image.revision="${COMMIT}" \
+      org.opencontainers.image.version="${VERSION}"
 USER node
 ENV VRCH_MCP_PORT=18916 VRCH_MCP_DATA=/data VRCH_MCP_BUILD=${COMMIT}
 CMD ["node", "remote/server.mjs"]
