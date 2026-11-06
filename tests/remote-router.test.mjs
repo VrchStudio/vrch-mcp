@@ -72,7 +72,8 @@ test('explicit remote references isolate identities and clients, keep attempt re
     assert.equal(sdkBody.size,Buffer.byteLength(sdkBody.text));
     assert.equal(sdkBody.sha256,createHash('sha256').update(sdkBody.text).digest('hex'));
     assert.equal(sdkBody.serviceRevision,'f'.repeat(40));
-    assert.equal(sdkBody.reviewedPagesRevision,'d32421f0');assert(sdkBody.text.includes('reviewed against Pages d32421f0'));assert(sdkBody.text.includes('browser-local media'));assert(!sdkBody.text.includes('Preview input is simulated silence'));
+    assert.equal(sdkBody.reviewedPagesRevision,'8a9a0f77');assert(sdkBody.text.includes('reviewed against Pages 8a9a0f77'));assert(sdkBody.text.includes('browser-local media'));assert(!sdkBody.text.includes('Preview input is simulated silence'));
+    assert(sdkBody.text.includes("event {type:'click',x,y}"));assert(sdkBody.text.includes('Do not split an ordinary tap into separate apps_preview_input down/up calls'));
     assert(tools.find(tool=>tool.name==='apps_sdk_reference').description.includes('camera'));
     const wait=tools.find(tool=>tool.name==='terminal_events').inputSchema.properties.waitSeconds;
     assert.equal(wait.maximum,20);assert(wait.description.includes('0..20'));
@@ -280,6 +281,17 @@ test('a new invitation always waits for approval; fast approval retains pending 
     await new Promise(resolve=>setTimeout(resolve,170));
     assert.equal((await f.call('apps_state',{connectionRef:reference})).structuredContent.phase,'succeeded');
   } finally {await f.close();}
+});
+
+test('raw Preview pointer watermarks remain below subsequent normalized App inputs', {skip:!supported},async()=>{
+ const f=await fixture();
+ try{
+  const {reference}=await f.connect(),base={connectionRef:reference,target:'preview',instanceId:'fixture-instance',generation:1},sequence=Date.now()*1000+10000;
+  const raw=await f.call('apps_preview_input',{connectionRef:reference,workspaceId:'fixture-workspace',event:{type:'pointerdown',x:.5,y:.5,pointerId:7,generation:1,sequence}});assert.equal(raw.structuredContent.phase,'succeeded');
+  assert.equal((await f.call('apps_interface_input',{...base,event:{type:'click',x:.5,y:.5}})).structuredContent.phase,'succeeded');
+  assert.equal((await f.call('apps_control',{...base,control:'E1',type:'rotate',delta:1})).structuredContent.phase,'succeeded');
+  const frames=f.remote.frames.filter(v=>['preview_input','interface_input','control_input'].includes(v.action));assert.deepEqual(frames.map(v=>v.args.event.sequence),[sequence,sequence+1,sequence+2]);
+ }finally{await f.close();}
 });
 
 test('hosted parallel control tools keep complete gestures ordered and do not resume queued input after ownership changes', {skip:!supported},async()=>{

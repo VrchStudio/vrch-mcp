@@ -1024,7 +1024,12 @@ function createAIClient(invitationURL, { WebSocketImpl = globalThis.WebSocket, e
     runPrivate,
     cancelPrivateInput,
     capabilities: () => state?.assistantCapabilities || null,
-    appsRequest: (action, args, options) => apps.request(action, args, options),
+    appsRequest: (action, args, options) => {
+      // Legacy raw pointer calls share the device's per-actor input watermark
+      // with normalized control/interface calls. Keep their sequence monotonic.
+      if(['preview_input','control_input','interface_input','host_input'].includes(action)&&Number.isSafeInteger(args?.event?.sequence))appInputSequence=Math.max(appInputSequence,args.event.sequence);
+      return apps.request(action, args, options);
+    },
     uploadFile: (path, options) => fileV2.upload(path, options),
     downloadFile: (path, options) => fileV2.download(path, options),
     pauseTransfer: () => fileV2.pause(),

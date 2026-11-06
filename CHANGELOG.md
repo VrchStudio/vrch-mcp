@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Keep App clicks working after pointer input.
+
+- Explain one-step taps in the web Preview and browser Simulator so ordinary taps are not mistaken for long presses.
+
 - Explain browser-local microphone, speaker and camera use in the Simulator and web Preview SDK reference.
 
 - Observe the My Apps web Preview through its existing AI connection without screen sharing.
