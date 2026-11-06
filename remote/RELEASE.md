@@ -8,8 +8,8 @@ plus the image source commit; the image label records the same version.
 ## Frozen inputs
 
 - MCP: the merged source of PR #1, version 0.1.0, with passing Linux/macOS CI.
-- Client minimum for the accepted web Preview/device flow: Pages `cd0eeefe`
-  and Runtime `20261106-apps-feedback-297` (My Apps 1.3.1), verified on 110/130.
+- Client minimum for the accepted web Preview/device flow: Pages `bac1bedc`
+  and Runtime `20261106-app-default-icon-298` (My Apps 1.3.1), verified on 110/130.
   The current Pages formal branch is older; its normal dev-to-main client release
   must carry that baseline before announcing availability to unupdated devices.
   Playground is separately owned and is not implied by this service release.
