@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Return complete App source and SDK guidance to clients that read text content.
+- Let busy Preview observations be retried without replaying edits or input.
+
 - Keep App clicks working after pointer input.
 
 - Explain one-step taps in the web Preview and browser Simulator so ordinary taps are not mistaken for long presses.

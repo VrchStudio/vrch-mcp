@@ -18,6 +18,12 @@ const digest = value => createHash('sha256').update(value).digest('hex');
 const durable = new Set(['apps_create', 'apps_open', 'apps_publish_preview', 'apps_publish', 'apps_save', 'apps_import_inspect', 'apps_import_commit', 'apps_file_commit', 'apps_launch', 'apps_write_text']);
 const hostedExcluded = new Set(['apps_file_export', 'apps_file_commit', 'apps_export_begin', 'apps_import_inspect', 'apps_import_commit']);
 const content = value => [{type: 'text', text: JSON.stringify(value)}];
+// Some hosted clients expose content only. Keep one plain body there and the
+// same verified body in structuredContent for structured consumers.
+const textBody = value => {const {text,...metadata}=value;return [...content(metadata),{type:'text',text}];};
+const observationRetry = (name,code) => name==='apps_observe'&&['capture_busy','observe_busy'].includes(code)
+  ? {retryable:true,retryAfterMs:250,message:'Another Preview observation is in progress. Wait for it to finish, read the current binding, then retry this read once. Do not run parallel captures.'} : {};
+
 
 export async function createRemoteRouter({filename, credentialDirectory, encryptionKey, resolveRegisteredTarget, createClient = createAIClient, waitMs = 20000, pendingWaitMs = 600000, resultDrainMs = 45000, idleMs = 1800000, buildRevision = 'unknown', browserTargets = null}) {
   if (typeof resolveRegisteredTarget !== 'function' || !Number.isInteger(waitMs) || waitMs < 1 || waitMs > 20000) throw fail('invalid_configuration');
@@ -276,7 +282,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
     entry.lastCall = Date.now(); if (record.phase === 'ready') armIdle(entry);
     if (name === 'terminal_disconnect') {entry.shutdown(); active.delete(record.id); return envelopes(snapshot(load(identity, record.id)));}
     if (!['terminal_events', 'ai_report', 'ai_capabilities'].includes(name) && record.phase !== 'ready') throw fail('approval_required');
-    if (name === 'apps_sdk_reference') return envelopes({connectionRef: record.id, phase:'succeeded', retryable:false, result:reference}, {content:content({reference:'My Apps SDK v1',body:'structuredContent.result.text'})});
+    if (name === 'apps_sdk_reference') return envelopes({connectionRef: record.id, phase:'succeeded', retryable:false, result:reference}, {content:textBody({reference:'My Apps SDK v1',...reference})});
     const {connectionRef, ...values} = args;
     if (name === 'terminal_events' && (typeof (values.waitSeconds ?? 20) !== 'number' || !Number.isFinite(values.waitSeconds ?? 20) || (values.waitSeconds ?? 20) < 0 || (values.waitSeconds ?? 20) > 20)) throw fail('invalid_wait');
     const isText = name === 'apps_read_text' || name === 'apps_write_text';
@@ -364,7 +370,9 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
       return envelopes(value,{...result,content:[...content({connectionRef,phase:value.phase,...(name==='terminal_input'?{delivery:'sent',execution:'unconfirmed',message:value.message}:{}),eventCount:events.length,imageCount:images.length,body:'structuredContent'}),...(result.content||[]).filter(item=>item.type!=='text')]});
     }
     if (name === 'ai_capabilities') return envelopes({...snapshot(load(identity, connectionRef)),catalog:catalogInfo}, {...result,content:[...result.content,...content({catalog:catalogInfo,discovery:'Refresh tools/list in this conversation if the available tools differ. A catalog change does not require re-pairing.'})]});
-    return envelopes({connectionRef, ...business(result)}, result);
+    const value={connectionRef,...business(result)};Object.assign(value,observationRetry(name,value.code));
+    if(name==='apps_read_text'&&!result.isError&&typeof value.result?.text==='string')return envelopes(value,{...result,content:textBody(value.result)});
+    return envelopes(value,value.retryable?{...result,content:content(value)}:result);
   }
   return {catalog, async handle(identity, message) {
     owner(identity);
@@ -377,7 +385,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
       const code = error.code || 'connection_unavailable';
       const help = code === 'invalid_connection_arguments' ? 'For a new invitation supply url and a fresh lowercase UUID attemptId. To resume supply only the original connectionRef and resume:true.'
         : code === 'unsupported_tool' ? hostedInstructions : code === 'control_changed' ? 'Control changed while this input was queued. Read the current state before deciding on a new action; do not replay automatically.' : undefined;
-      const value = {phase: 'failed', retryable: false, code, ...(help ? {message:help} : {})};
+      const value = {phase: 'failed', retryable: false, code, ...(help ? {message:help} : {}),...observationRetry(message.params?.name,code)};
       return {jsonrpc: '2.0', id: message.id, result: envelopes(value, {isError: true, content: content(value)})};
     }
   }, close() {if (closed) return; for (const entry of active.values()) entry.shutdown('service_restarted'); active.clear(); closed = true; db.close();}};

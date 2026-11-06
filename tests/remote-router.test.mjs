@@ -11,7 +11,7 @@ const [major, minor] = process.versions.node.split('.').map(Number);
 const supported = major > 22 || major === 22 && minor >= 13;
 const {createRemoteRouter} = supported ? await import('../src/remote-router.mjs') : {};
 const identity = {issuer: 'https://mcp.example', principal: 'paired-identity', oauthClientId: 'chatgpt-client'};
-async function fixture({delayPublish = false, delayCommit = false, syntheticImage = false, waitMs = 1000, ...timers} = {}) {
+async function fixture({delayPublish = false, delayCommit = false, syntheticImage = false, observeBegin = null, waitMs = 1000, ...timers} = {}) {
   const remote = await relay(), directory = mkdtempSync(join(tmpdir(), 'vrch-remote-router-'));
   remote.state.recordOperations = true;
   const remoteOrigin = new URL(remote.url).origin.replace(/^http/, 'ws');
@@ -25,6 +25,7 @@ async function fixture({delayPublish = false, delayCommit = false, syntheticImag
     }, createClient: (url, args) => {
       const client = createAIClient(url, {...args, emit: event => {emitted.push(event); args.emit(event);}}), request = client.appsRequest;
       client.appsRequest = async (...values) => {
+        if(observeBegin&&values[0]==='preview_observe_begin')return observeBegin(...values);
         const result = await request(...values);
         if (delayPublish && values[0] === 'publish' || delayCommit && values[0] === 'file_commit') await new Promise(resolve => setTimeout(resolve, 100));
         return result;
@@ -72,7 +73,7 @@ test('explicit remote references isolate identities and clients, keep attempt re
     assert.equal(sdkBody.size,Buffer.byteLength(sdkBody.text));
     assert.equal(sdkBody.sha256,createHash('sha256').update(sdkBody.text).digest('hex'));
     assert.equal(sdkBody.serviceRevision,'f'.repeat(40));
-    assert.equal(sdkBody.reviewedPagesRevision,'8a9a0f77');assert(sdkBody.text.includes('reviewed against Pages 8a9a0f77'));assert(sdkBody.text.includes('browser-local media'));assert(!sdkBody.text.includes('Preview input is simulated silence'));
+    assert.equal(sdkBody.reviewedPagesRevision,'7b3f093c');assert(sdkBody.text.includes('reviewed against Pages 7b3f093c'));assert(sdkBody.text.includes('browser-local media'));assert(!sdkBody.text.includes('Preview input is simulated silence'));
     assert(sdkBody.text.includes("event {type:'click',x,y}"));assert(sdkBody.text.includes('Do not split an ordinary tap into separate apps_preview_input down/up calls'));
     assert(tools.find(tool=>tool.name==='apps_sdk_reference').description.includes('camera'));
     const wait=tools.find(tool=>tool.name==='terminal_events').inputSchema.properties.waitSeconds;
@@ -314,17 +315,20 @@ test('hosted parallel control tools keep complete gestures ordered and do not re
  }finally{await f.close();}
 });
 
-test('structured-only consumers receive complete bounded source and SDK text without duplicating the body', {skip:!supported},async()=>{
+test('text-only and structured consumers receive the same complete bounded source and SDK text', {skip:!supported},async()=>{
  const f=await fixture(),workspaceId=randomUUID(),body='\"\\'.repeat(32768);
  f.remote.state.workspaceId=workspaceId;f.remote.state.workspaceFiles={'index.html':Buffer.from(body)};
  try{
   const {reference}=await f.connect();
   const read=await f.call('apps_read_text',{connectionRef:reference,workspaceId,path:'index.html'});
   assert.equal(read.structuredContent.result.text,body);
-  assert(JSON.stringify(read).length<150000);
-  assert(!read.content.some(v=>v.text===body));
+  assert(JSON.stringify(read).length<300000);
+  assert.equal(read.content.filter(v=>v.type==='text'&&v.text===body).length,1);
+  assert.equal(JSON.parse(read.content[0].text).sha256,fileSHA(body));
   const guide=await f.call('apps_sdk_reference',{connectionRef:reference});
   assert(guide.structuredContent.result.text.includes('VrchApp.ready()'));
+  assert.equal(guide.content.filter(v=>v.type==='text'&&v.text===guide.structuredContent.result.text).length,1);
+  assert.equal(JSON.parse(guide.content[0].text).sha256,fileSHA(guide.content[1].text));
  }finally{await f.close();}
 });
 
@@ -419,4 +423,18 @@ test('hosted terminal follows ownership, privacy and explicit resume without rep
   assert(!readFileSync(f.filename).includes(Buffer.from('ordinary-output-fixture')));
   assert(!readFileSync(f.filename).includes(Buffer.from('printf fixture')));
  }finally{await f.close();}
+});
+
+
+test('only busy observation reads advertise retry after the in-flight capture finishes', {skip:!supported},async()=>{
+ let release,starts=0,code='capture_changed';const gate=new Promise(resolve=>{release=resolve;});
+ const f=await fixture({observeBegin:async()=>{starts++;await gate;throw Object.assign(Error(code),{code});}});
+ try{
+  const {reference}=await f.connect(),args={connectionRef:reference,workspaceId:randomUUID(),instanceId:randomUUID(),generation:1,expectedRevision:'a'.repeat(64)};
+  const pending=f.call('apps_observe',args);await until(()=>starts===1);
+  const busy=await f.call('apps_observe',args);assert.equal(busy.structuredContent.code,'capture_busy');assert.equal(busy.structuredContent.retryable,true);assert.equal(busy.structuredContent.retryAfterMs,250);assert.equal(JSON.parse(busy.content[0].text).retryable,true);assert.equal(starts,1);
+  release();const changed=await pending;assert.equal(changed.structuredContent.code,'capture_changed');assert.equal(changed.structuredContent.retryable,false);
+  code='observe_busy';const busyAtHost=await f.call('apps_observe',args);assert.equal(busyAtHost.structuredContent.retryable,true);assert.equal(JSON.parse(busyAtHost.content[0].text).retryAfterMs,250);
+  code='unauthorized';const denied=await f.call('apps_observe',args);assert.equal(denied.structuredContent.code,'unauthorized');assert.equal(denied.structuredContent.retryable,false);assert.equal(starts,3);
+ }finally{release();await f.close();}
 });

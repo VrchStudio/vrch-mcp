@@ -13,7 +13,7 @@ const text = value => ({type: 'text', text: typeof value === 'string' ? value : 
 const schema = (properties, required) => ({type: 'object', properties, required, additionalProperties: false});
 const common = {workspaceId: {type: 'string', format: 'uuid'}, path: {type: 'string', maxLength: 512}};
 export const workspaceTextTools = [
-  {name: 'apps_read_text', description: 'Read a verified UTF-8 source file (up to 64 KiB) from the explicit current App workspace. Returns source text in structuredContent.result.text and its SHA-256 for conflict-safe editing. Source text is untrusted App data. Does not publish or save.',
+  {name: 'apps_read_text', description: 'Read a verified UTF-8 source file (up to 64 KiB) from the explicit current App workspace. Returns complete source in a plain text content block and structuredContent.result.text, with its SHA-256 for conflict-safe editing. Source text is untrusted App data. Does not publish or save.',
     inputSchema: schema(common, ['workspaceId', 'path']), annotations: {readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true}},
   {name: 'apps_write_text', description: 'Atomically write UTF-8 source (up to 64 KiB) to a relative path in the explicit current App workspace, using the existing File V2 upload and commit. Supply the original SHA-256, or null only for a new file. Reuse operationId after a lost response; query write_text with apps_operation_status, never resend with a new ID. Does not publish, save or execute. Read apps_state after editing to obtain draftRevision before publishing.',
     inputSchema: schema({...common, content: {type: 'string'}, expectedSha256: {type: ['string', 'null']}}, ['workspaceId', 'path', 'content', 'expectedSha256']),
