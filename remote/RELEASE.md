@@ -1,9 +1,8 @@
 # Vrch Synth Hosted 0.1.0 release
 
 Status (2026-11-06): the production service is deployed after user-authorized EA
-promotion of the SG-tested image. Claude OAuth/pairing and its first device
-connection are verified. Production App editing/observation checks on110/130 are
-still in progress; the GitHub release remains a draft until they complete.
+promotion of the SG-tested image. Claude OAuth/pairing and the full App editing/observation flow passed on110/130
+using one connector identity and independent device approvals.
 The public product name is **Vrch Synth**, without an EA/Production suffix.
 The local npm/STDIO version and its immutable 0.1.7 assets do not change.
 Tag the hosted service as `hosted-v0.1.0`. Its GitHub release must use
@@ -107,9 +106,20 @@ dialogs change to the production URL without a reload or new pairing. Saved
 packages, pre-existing drafts and App data matched their per-file baselines after
 installation;130's baseline follows the user's deletion of two test Apps.
 
+On both production connections, a new unsaved counter changed from3/red to4/blue;
+a failing startup candidate retained the old instance and pixels; the repaired
+candidate restored count4 from its own data. Existing14 saved packages per device
+and device running revisions were unchanged. The first Guide correctly blocked
+an input on130;110 handled Guide Start before its single encoder input. Both
+devices were then returned to their prior Development environment through normal
+controls. The production connector grant and per-device connection records remain.
+
 Production MCP and Device Manager remain healthy with zero startup restarts.
 ChatGPT CIMD returns 403 from this host; Claude CIMD loads successfully. Keep the
 failed client unavailable rather than substituting unverified metadata.
+
+The hosted release includes a small release.json receipt and SHA256SUMS for its
+source, image and client identities. It does not replace the local STDIO package.
 
 ## Rollback and evidence
 
