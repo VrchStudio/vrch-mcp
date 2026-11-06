@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Explain browser-local microphone, speaker and camera use in the Simulator and web Preview SDK reference.
+
 - Observe the My Apps web Preview through its existing AI connection without screen sharing.
 
 - Recover approved browser sessions after interrupted handshakes.

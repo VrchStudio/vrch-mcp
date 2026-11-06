@@ -7,7 +7,7 @@ import {dirname, join} from 'node:path';
 import {browserObservationTool,browserCapabilities} from './remote-browser-tools.mjs';
 import {previewTools,capturePreview,observePreview} from './remote-preview.mjs';
 import {createWorkspaceText, validateWorkspaceText, workspaceTextTools} from './remote-workspace-text.mjs';
-import {hostedCapabilities, hostedInstructions, sdkReference, sdkReferenceTool} from './remote-guidance.mjs';
+import {hostedCapabilities, hostedInstructions, reviewedPagesRevision, sdkReference, sdkReferenceTool} from './remote-guidance.mjs';
 import {createAIClient} from './client.mjs';
 import {createTerminalMCP} from './mcp.mjs';
 import {createRemoteCredentialStore} from './remote-credentials.mjs';
@@ -49,7 +49,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
   };
   const resumable = record => record.phase === 'disconnected' && ['transport_disconnected','idle_timeout','service_restarted','client_closed'].includes(record.code) || record.device.startsWith('web_') && record.phase === 'request_disconnected';
   const recovery = record => ({resumable:resumable(record),...(resumable(record)?{message:'Resume this original connectionRef with terminal_connect({connectionRef,resume:true}); retryable:false prohibits automatic replay of the interrupted tool call. Resume still checks the retained target authorization.'}:{})});
-  const reference = {text:sdkReference,size:Buffer.byteLength(sdkReference),sha256:digest(sdkReference),reviewedPagesRevision:'c59300c5',serviceRevision:buildRevision};
+  const reference = {text:sdkReference,size:Buffer.byteLength(sdkReference),sha256:digest(sdkReference),reviewedPagesRevision,serviceRevision:buildRevision};
   const snapshot = record => ({connectionRef: record.id, phase: record.phase, retryable: false, ...recovery(record),
     ...(record.code ? {code: record.code} : {}), ...(record.phase === 'request_disconnected' ? {authorizationOutcome: 'unknown'} : {}),
     ...(record.phase === 'pending' ? {deadlineKnown: !!active.get(record.id)?.inviteDeadline, ...(active.get(record.id)?.inviteDeadline ? {inviteExpiresAt: active.get(record.id).inviteDeadline} : {})} : {}),

@@ -72,7 +72,7 @@ test('explicit remote references isolate identities and clients, keep attempt re
     assert.equal(sdkBody.size,Buffer.byteLength(sdkBody.text));
     assert.equal(sdkBody.sha256,createHash('sha256').update(sdkBody.text).digest('hex'));
     assert.equal(sdkBody.serviceRevision,'f'.repeat(40));
-    assert.equal(sdkBody.reviewedPagesRevision,'c59300c5');
+    assert.equal(sdkBody.reviewedPagesRevision,'d32421f0');assert(sdkBody.text.includes('reviewed against Pages d32421f0'));assert(sdkBody.text.includes('browser-local media'));assert(!sdkBody.text.includes('Preview input is simulated silence'));
     assert(tools.find(tool=>tool.name==='apps_sdk_reference').description.includes('camera'));
     const wait=tools.find(tool=>tool.name==='terminal_events').inputSchema.properties.waitSeconds;
     assert.equal(wait.maximum,20);assert(wait.description.includes('0..20'));
