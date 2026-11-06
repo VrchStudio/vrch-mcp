@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Document the deployed Vrch Synth service and compatible production client.
+
 ## Hosted 0.1.0 - 2026-11-06 (prepared)
 
 - Verify interrupted edits remain recoverable on busy hosts.

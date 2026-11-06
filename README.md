@@ -92,7 +92,9 @@ Add a local MCP through the supported settings, using actual absolute paths:
 
 These are configuration examples, not evidence that every host/version passed.
 Ordinary browser chat without local MCP execution cannot run this package.
-Hosted MCP and `mcp.vrch.ai` belong to a later phase.
+Browser MCP clients use **Vrch Synth** at `https://mcp.vrch.ai/synth`, with OAuth
+and normal device approval, instead of installing this local package. See the
+[hosted service and current acceptance](remote/README.md).
 
 ## Collaborate and recover
 
