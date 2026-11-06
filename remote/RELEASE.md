@@ -2,6 +2,8 @@
 
 Status: candidate prepared for review; EA deployment is a separate authorized action.
 The local npm/STDIO version and its immutable 0.1.7 assets do not change.
+Tag the hosted service as `hosted-v0.1.0`. Its GitHub release must use
+`make_latest: false`, preserving local STDIO downloads through the latest-release URL.
 `remote/package.json` owns the Hosted version. MCP initialize reports that version
 plus the image source commit; the image label records the same version.
 

@@ -195,15 +195,33 @@ test('idle cleanup waits for an in-flight edit and keeps its durable result for 
   const f = await fixture({delayPublish: true, waitMs: 5, idleMs: 60});
   try {
     const {reference} = await f.connect(), operationId = randomUUID();
-    assert.equal((await f.call('apps_publish', {connectionRef: reference, operationId, workspaceId: 'workspace', expectedRevision: 'revision'})).structuredContent.phase, 'pending');
-    await new Promise(resolve => setTimeout(resolve, 220));
-    assert.equal((await f.call('terminal_events', {connectionRef: reference})).structuredContent.phase, 'disconnected');
-    assert.equal((await f.call('terminal_events', {connectionRef: reference})).structuredContent.code, 'idle_timeout');
+    const args = {connectionRef: reference, operationId, workspaceId: 'workspace', expectedRevision: 'revision'};
+    assert.equal((await f.call('apps_publish', args)).structuredContent.phase, 'pending');
+    // Idle shutdown is observed from the device-side client, because every router
+    // tool call refreshes the connection's idle clock and a fixed sleep races the
+    // delayed publish plus the idle re-check on a loaded runner.
+    await until(() => f.emitted.some(event => event.type === 'ended'));
+    assert.equal(f.emitted.filter(event => event.type === 'ended').length, 1);
+    const offline = (await f.call('terminal_events', {connectionRef: reference})).structuredContent;
+    assert.equal(offline.phase, 'disconnected'); assert.equal(offline.code, 'idle_timeout'); assert.equal(offline.resumable, true);
+    // The in-flight publish completed before the idle shutdown: its durable receipt
+    // is readable offline, and repeating the same publish returns that receipt
+    // instead of sending the edit again.
+    const kept = (await f.call('apps_operation_status', {connectionRef: reference, originalOperationId: operationId, originalAction: 'publish'})).structuredContent;
+    assert.equal(kept.phase, 'succeeded'); assert.equal(kept.operationId, operationId); assert.equal(kept.retryable, false);
+    assert.equal((await f.call('apps_publish', args)).structuredContent.phase, 'succeeded');
+    assert.equal(f.remote.frames.filter(frame => frame.action === 'publish').length, 1);
     await f.call('terminal_connect', {connectionRef: reference, resume: true});
     await until(() => f.remote.frames.some(frame => frame.type === 'ai_resume'));
-    await new Promise(resolve => setTimeout(resolve, 10));
+    let phase;
+    for (let i = 0; i < 100 && phase !== 'ready'; i++) {
+      phase = (await f.call('terminal_events', {connectionRef: reference, waitSeconds: 0})).structuredContent.phase;
+      if (phase !== 'ready') await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    assert.equal(phase, 'ready');
     const status = await f.call('apps_operation_status', {connectionRef: reference, originalOperationId: operationId, originalAction: 'publish'});
     assert.equal(status.structuredContent.phase, 'succeeded');
+    assert.equal(status.structuredContent.operationId, operationId);
     assert.equal(f.remote.frames.filter(frame => frame.action === 'publish').length, 1);
   } finally {await f.close();}
 });
