@@ -2,9 +2,11 @@
 
 ## Unreleased
 
-- Document the deployed Vrch Synth service and compatible production client.
+## Hosted 0.1.0 - 2026-11-06
 
-## Hosted 0.1.0 - 2026-11-06 (prepared)
+- Release Vrch Synth with device-approved OAuth and verified production Preview editing.
+- Explain asynchronous publication diagnostics and observation heartbeat state.
+- Document the deployed service and compatible production client.
 
 - Verify interrupted edits remain recoverable on busy hosts.
 
