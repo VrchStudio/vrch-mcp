@@ -2,6 +2,74 @@
 
 ## Unreleased
 
+## Hosted 0.1.0 - 2026-11-06 (prepared)
+
+- Verify interrupted edits remain recoverable on busy hosts.
+
+- Explain default App icons and missing-artwork warnings in the SDK reference.
+- Require the client fix that keeps official App artwork from displaying twice.
+
+- Prepare Hosted Remote MCP 0.1.0 with an explicit EA deployment preview.
+- Keep reconnect release checks reliable on slower hosts.
+
+- Return complete App source and SDK guidance to clients that read text content.
+- Let busy Preview observations be retried without replaying edits or input.
+
+- Keep App clicks working after pointer input.
+
+- Explain one-step taps in the web Preview and browser Simulator so ordinary taps are not mistaken for long presses.
+
+- Explain browser-local microphone, speaker and camera use in the Simulator and web Preview SDK reference.
+
+- Observe the My Apps web Preview through its existing AI connection without screen sharing.
+
+- Recover approved browser sessions after interrupted handshakes.
+
+- Keep browser calls usable when the computer clock differs.
+
+- Connect to independently approved browser Simulators and observe their actual DOM and Canvas layers.
+
+- Notify existing remote conversations when their tool catalogue needs refreshing, keeping the original device authorization.
+
+- Publish only to the current web Preview and observe a person-shared 2D frame with its actual revision.
+
+- Show the current vrch.io logo in remote connector metadata and pairing tabs.
+
+- Keep parallel AI authorization tabs independent and simplify pairing guidance.
+
+- Accept Gemini’s complete set of Google OAuth callback addresses.
+
+- Diagnose rejected connector registrations without logging secrets or account paths.
+
+- Register Google web connectors automatically without manually entering OAuth credentials.
+
+- Use the approved device terminal from web AI with existing control and privacy rules.
+- Keep terminal output available when App tools run between terminal reads.
+
+- Use /synth with separate SG test and EA production domains.
+
+- Identify SDK reference content and explain how to resume a disconnected connection.
+- Clarify hardware contracts and hosted event wait limits.
+
+- Explain camera, audio, system and IMU APIs directly to web AI clients.
+- Read completed operation receipts while offline and distinguish calls not sent.
+
+- Pair through the current My Apps device without a fixed host list.
+
+- Deliver source text, SDK help and screenshot details to structured-result clients.
+- Queue parallel text reads and keep hosted control gestures in order.
+
+- Report available hosted tools accurately, explain recovery, and provide an App SDK reference.
+- Keep shared screenshots out of ordinary hosted editing results.
+
+- Edit App source from web AI with conflict checks and recoverable writes, without shell tools.
+
+- Accept Claude web pairing through its published OAuth identity.
+
+- Allow standard SDK validation through a separate, explicitly enabled pairing client.
+
+- Add a development Remote MCP service with device-approved pairing and explicit, recoverable connections.
+
 - Prepare isolated, encrypted recovery credentials for hosted MCP connections.
 
 ## 0.1.7

@@ -4,8 +4,10 @@ import { toolAnnotations } from './tool-metadata.mjs';
 
 // MCP supplies native image content, never a path pretending to be model input.
 // Human captures are queued automatically and included with the next terminal result.
-export function createTerminalMCP({ send, createClient = createAIClient, allowHTTPOrigin, toolCatalog = 'dynamic' } = {}) {
+export function createTerminalMCP({ send, createClient = createAIClient, allowHTTPOrigin, toolCatalog = 'dynamic', imageDelivery = 'automatic', eventDelivery = 'automatic' } = {}) {
   if (!['dynamic', 'stable'].includes(toolCatalog)) throw new Error('toolCatalog must be stable or dynamic.');
+  if (!['automatic', 'events'].includes(imageDelivery)) throw new Error('Invalid image delivery mode.');
+  if (!['automatic', 'terminal'].includes(eventDelivery)) throw new Error('Invalid event delivery mode.');
   const permittedHTTPOrigin = validateHTTPOrigin(allowHTTPOrigin);
   let client, initialized = false, admitted = false, appsSession = false, events = [], textBytes = 0;
   const unread = new Map(), waiters = new Set(), notified = new Set();
@@ -65,7 +67,7 @@ export function createTerminalMCP({ send, createClient = createAIClient, allowHT
     {name: 'apps_file_export', description: 'Create a fixed download snapshot of a relative file in the current App workspace. Returns its reference and sha256; use file_download with app-workspace. Does not change preview or save the App.', inputSchema: schema({workspaceId:{type:'string'},path:{type:'string'}}, ['workspaceId','path'])},
     {name: 'apps_file_commit', description: 'Atomically deliver a completed app-workspace upload to a relative workspace path. Omit expectedSha256 only for a new file; supply the existing file sha256 to replace it. Does not publish, save or execute the file.', inputSchema: schema({workspaceId:{type:'string'},reference:{type:'string'},path:{type:'string'},expectedSha256:{type:['string','null']}}, ['workspaceId','reference','path'])},
     {name: 'file_upload', description: 'Upload a local regular file through the shared resumable file transport. App packages must use .vrchapp and remain private until inspect/commit.', inputSchema: schema({path: {type: 'string'}, purpose: {type: 'string', enum: ['app-package', 'app-workspace', 'boot-image']}, workspaceId:{type:'string'}, operationId: {type: 'string'}}, ['path', 'purpose'])},
-    {name: 'file_download', description: 'Download an authorized fixed App package reference to a new local path, verifying all bytes before an atomic no-overwrite commit.', inputSchema: schema({path: {type: 'string'}, purpose:{type:'string',enum:['app-package','app-workspace']}, reference: {type: 'string'}, operationId: {type: 'string'}}, ['path', 'reference'])},
+    {name: 'file_download', description: 'Download an authorized fixed App package reference to a new local path, verifying all bytes before an atomic no-overwrite commit.', inputSchema: schema({path: {type: 'string'}, maxBytes: {type: 'integer', minimum: 0, maximum: 134217728}, purpose:{type:'string',enum:['app-package','app-workspace']}, reference: {type: 'string'}, operationId: {type: 'string'}}, ['path', 'reference'])},
     ...['pause', 'resume', 'cancel'].map(action => ({name: 'file_' + action, description: action[0].toUpperCase() + action.slice(1) + ' the current shared file transfer.', inputSchema: schema()}))
   ];
   const tools = [
@@ -125,23 +127,23 @@ export function createTerminalMCP({ send, createClient = createAIClient, allowHT
         if (name.startsWith('apps_')) {
           const {workspaceId, expectedRevision, operationId, ...values} = args;
           const result = await client.appsRequest(name === 'apps_exit' ? 'stop' : name.slice(5), values, {workspaceId, expectedRevision, operationId});
-          const output = drain(); output.content.unshift(text(JSON.stringify(result))); reply(output); return;
+          const output = eventDelivery === 'terminal' ? {content:[]} : drain(imageDelivery === 'events' ? [] : undefined); output.content.unshift(text(JSON.stringify(result))); reply(output); return;
         }
         if (name.startsWith('file_')) {
           let result;
           if (name === 'file_upload') result = await client.uploadFile(args.path, {purpose: args.purpose, resource: args.workspaceId ? {workspaceId:args.workspaceId} : {}, operationId: args.operationId});
-          else if (name === 'file_download') result = await client.downloadFile(args.path, {purpose: args.purpose || 'app-package', resource: {reference: args.reference}, operationId: args.operationId});
+          else if (name === 'file_download') result = await client.downloadFile(args.path, {purpose: args.purpose || 'app-package', resource: {reference: args.reference}, operationId: args.operationId, maxBytes: args.maxBytes});
           else if (name === 'file_resume') result = await client.resumeTransfer();
           else if (name === 'file_cancel') result = await client.cancelTransfer();
           else {client.pauseTransfer(); result = {paused: true};}
-          const output = drain(); output.content.unshift(text(JSON.stringify(result))); reply(output); return;
+          const output = eventDelivery === 'terminal' ? {content:[]} : drain(imageDelivery === 'events' ? [] : undefined); output.content.unshift(text(JSON.stringify(result))); reply(output); return;
         }
         if (name === 'terminal_disconnect') { client.close(); client = null; unread.clear(); reply(drain()); return; }
         if (name === 'terminal_input') {
           if (typeof args.data !== 'string' || !client.input(args.data)) throw new Error('AI input control is required.');
           reply(drain(undefined, 'Input sent; execution is not yet confirmed. Read terminal_events for output or rejection.')); return;
         } else if (name === 'take_screenshot') {
-          const batch = await client.takeScreenshot({ screen: args.screen }); reply(drain()); return;
+          const batch = await client.takeScreenshot({ screen: args.screen }); reply(drain(batch)); return;
         } else if (name === 'terminal_events') {
           const seconds = args.waitSeconds ?? 20;
           if (!Number.isFinite(seconds) || seconds < 0 || seconds > 25) throw new Error('waitSeconds must be between 0 and 25. Retry terminal_events({}) for the default 20-second wait.');

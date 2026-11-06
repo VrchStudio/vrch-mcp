@@ -629,6 +629,11 @@
           "path": {
             "type": "string"
           },
+          "maxBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 134217728
+          },
           "purpose": {
             "type": "string",
             "enum": [
