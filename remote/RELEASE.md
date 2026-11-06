@@ -1,6 +1,10 @@
-# Hosted 0.1.0 release preparation
+# Vrch Synth Hosted 0.1.0 release
 
-Status: candidate prepared for review; EA deployment is a separate authorized action.
+Status (2026-11-06): the production service is deployed after user-authorized EA
+promotion of the SG-tested image. Claude OAuth/pairing and its first device
+connection are verified. Production App editing/observation checks on110/130 are
+still in progress; the GitHub release remains a draft until they complete.
+The public product name is **Vrch Synth**, without an EA/Production suffix.
 The local npm/STDIO version and its immutable 0.1.7 assets do not change.
 Tag the hosted service as `hosted-v0.1.0`. Its GitHub release must use
 `make_latest: false`, preserving local STDIO downloads through the latest-release URL.
@@ -9,15 +13,19 @@ plus the image source commit; the image label records the same version.
 
 ## Frozen inputs
 
-- MCP: the merged source of PR #1, version 0.1.0, with passing Linux/macOS CI.
-- Client minimum for the accepted web Preview/device flow: Pages `c018f738`
-  and Runtime `20261106-app-default-icon-298` (My Apps 1.3.1), verified on 110/130.
-  The current Pages formal branch is older; its normal dev-to-main client release
-  must carry that baseline before announcing availability to unupdated devices.
-  Playground is separately owned and is not implied by this service release.
-- Device Manager: the MCP pairing changes from MR !28, based on v0.12.3;
-  no schema migration. Preserve the exact live Compose overlays and all existing
-  environment values, secrets, database and signing identity.
+- MCP: PR#1 merged as main006e4a44; its runtime code matches image source
+  bdb697a82712eb1018258bc3b26ede6631bacde4. Linux/macOS CI passes on Node22.4/22/24.
+  The deployed image is vrch-mcp:hosted-0.1.0-bdb697a,
+  SHA-256 e17c2e12aaf358b0eaaaafe981ae08269ea0eb2c071b58cfacc5a74da01b823d.
+- Client: Pages v1.9.1 / main1711579e, My Apps1.3.2, and Runtime
+  20261106-mcp-environment-address-301 are installed normally on110/130.
+  The same open authorization dialog follows SG -> EA without re-pairing.
+  Playground remains separately owned; this release does not enable its EA bridge.
+- Device Manager: MR!28 merged as main dc4b1e49, protected tag v0.12.4;
+  image vrch-device-manager:mcp-0.12.4-9649d3c,
+  SHA-256 b6b5a80e231423e22aeeb915796ea87dc8ff723c005b946865064e06594a538f.
+  No schema migration. Existing Compose overlays, signing identity and database
+  are preserved. The rollback image is v0.12.3-20261030-release1.
 - Gateway: only the signed `POST /api/vrch-device-management/v1/device/mcp-pairing/attest`
   location from the tested Pages template. Preserve other routes and configuration.
 
@@ -54,7 +62,7 @@ added route/binding. It does not create DNS, write deployment config, reload ngi
 or restart a service. Separately run `nginx -t` against an isolated rendered
 configuration on the development host. Do not point the formal hostname at SG.
 
-## EA deployment sequence (not executed by preparation)
+## First deployment procedure
 
 1. Record current Device Manager image and exact Compose files, Gateway config,
    tunnel config and custom bindings. Check the MCP hostname's existing DNS state.
@@ -65,7 +73,8 @@ configuration on the development host. Do not point the formal hostname at SG.
    Export only the EA Device Manager signing key's public half as an Ed25519
    SubjectPublicKeyInfo PEM. Its issuer is `vrch-device-manager-ea`.
    Do not copy SG grants, connection records, device credentials or recovery keys.
-3. Update only Device Manager's image and add the existing `compose.mcp.yaml`
+3. Render the effective Compose configuration and check its image first; repeated
+   keys in an environment file use the final value. Update only Device Manager's image and add the existing `compose.mcp.yaml`
    overlay with `VRCH_DEVICE_MANAGER_MCP_RESOURCE=https://mcp.vrch.ai/synth`.
    Recreate only device-manager with `--no-deps`; leave PostgreSQL and other
    services running. Validate health and the signed-attestation route.
@@ -82,6 +91,25 @@ configuration on the development host. Do not point the formal hostname at SG.
    Complete one normal client OAuth/pairing/Invite/Allow flow and a representative
    read/write/observe workflow on an explicitly selected compatible device.
    SG connectors remain valid and separate; first use of EA requires EA authorization.
+
+## Verified deployment state
+
+The production public OAuth/resource documents return 200 with the correct issuer
+and resource. Unauthenticated /synth returns 401; retired /mcp and SDK-only test
+routes return 404. SDK validation stays disabled. The Device Manager pairing
+attestation route requires its signed device proof. Existing SG OAuth is separate
+and retained; no SG state or credential was copied to production.
+
+Both devices completed normal production registration and owner activation.
+Normal Components/Runtime installed the published client; environment switches
+preserve each realm's credentials. The user verified both already-open setup
+dialogs change to the production URL without a reload or new pairing. Saved
+packages, pre-existing drafts and App data matched their per-file baselines after
+installation;130's baseline follows the user's deletion of two test Apps.
+
+Production MCP and Device Manager remain healthy with zero startup restarts.
+ChatGPT CIMD returns 403 from this host; Claude CIMD loads successfully. Keep the
+failed client unavailable rather than substituting unverified metadata.
 
 ## Rollback and evidence
 
