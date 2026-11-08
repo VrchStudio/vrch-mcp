@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.1.8
+
+- Stay connected to several devices at once, each with its own events, Apps control and file uploads; resuming one device never disconnects another.
+
 ## Hosted 0.1.0 - 2026-11-06
 
 - Release Vrch Synth with device-approved OAuth and verified production Preview editing.

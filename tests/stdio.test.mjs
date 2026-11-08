@@ -120,3 +120,33 @@ for (const entry of ['bin/vrch-mcp.mjs','dist/vrch-mcp.mjs']) test(`official MCP
     assert(!JSON.stringify(await client.listTools()).includes('fixture-secret'));
   } finally {await client.close(); await device.close(); await rm(directory,{recursive:true,force:true});}
 });
+
+test('one STDIO process stays connected to two devices and keeps them apart', async () => {
+  const first = await relay(), second = await relay(), directory = await mkdtemp(join(tmpdir(), 'vrch-stdio-multi-'));
+  const transport = new StdioClientTransport({command:process.execPath,
+    args:[fileURLToPath(new URL('../bin/vrch-mcp.mjs', import.meta.url))],stderr:'pipe',env:{...process.env,XDG_STATE_HOME:directory}});
+  const client = new Client({name:'vrch-test-host',version:'1.0.0'});
+  const call = (name, args = {}) => client.callTool({name,arguments:args});
+  const refOf = device => new URL(device.url).host;
+  try {
+    await client.connect(transport);
+    for (const device of [first, second]) assert.match((await call('terminal_connect',{url:device.url})).content[0].text, new RegExp('connectionRef ' + refOf(device)));
+    await until(()=>first.frames.some(frame=>frame.type==='ai_join') && second.frames.some(frame=>frame.type==='ai_join'));
+    first.approve(); second.approve();
+    const seen = new Set();
+    for (let attempt=0;attempt<6 && seen.size<2;attempt++)
+      for (const item of (await call('terminal_events')).content) if (item.type==='text' && item.text.includes('ai_approved')) seen.add(JSON.parse(item.text).connectionRef);
+    assert.deepEqual([...seen].sort(), [refOf(first), refOf(second)].sort());
+    const ambiguous = await call('apps_list');
+    assert.equal(ambiguous.isError,true); assert.match(ambiguous.content[0].text,/connection_required/);
+    const before = second.frames.filter(frame=>frame.type==='apps_request').length;
+    assert.equal(JSON.parse((await call('apps_list',{connectionRef:refOf(first)})).content[0].text).apps[0].id,'fixture-app');
+    assert.equal(second.frames.filter(frame=>frame.type==='apps_request').length, before, 'a named call reaches only its device');
+    await call('terminal_disconnect',{connectionRef:refOf(first)});
+    assert.equal(JSON.parse((await call('apps_list')).content[0].text).apps[0].id,'fixture-app', 'the remaining device needs no name');
+    assert(second.frames.some(frame=>frame.type==='apps_request'));
+  } finally {
+    await client.close(); await first.close(); await second.close(); await rm(directory,{recursive:true,force:true});
+  }
+});
+

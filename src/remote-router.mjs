@@ -120,7 +120,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
     const pending = new Map(), entry = {requests: 0, lastCall: Date.now()};
     const credentialStore = createRemoteCredentialStore({directory: credentialDirectory, key: encryptionKey,
       binding: {...identity, deviceId: record.device, channel: 'apps', connectionRef: record.id}});
-    entry.bridge = createTerminalMCP({toolCatalog: 'stable', imageDelivery: 'events', eventDelivery: 'terminal', send: message => {
+    entry.bridge = createTerminalMCP({toolCatalog: 'stable', imageDelivery: 'events', eventDelivery: 'terminal', connections: 'single', send: message => {
       if (pending.has(message.id)) {pending.get(message.id)(message.result); pending.delete(message.id);}
     }, createClient: (address, options) => {
       const client = createClient(address, {...options, WebSocketImpl: target.WebSocketImpl, credentialStore, autoReconnect: false,
@@ -186,7 +186,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
     try{await channel.start();}catch(error){notify({type:'ended',code:error.code||'transport_disconnected'});throw error;}
   }
   const replies = [];
-  const catalogBridge = createTerminalMCP({toolCatalog: 'stable', send: message => replies.push(message)});
+  const catalogBridge = createTerminalMCP({toolCatalog: 'stable', connections: 'single', send: message => replies.push(message)});
   await catalogBridge.receive({jsonrpc: '2.0', id: 1, method: 'initialize'});
   await catalogBridge.receive({jsonrpc: '2.0', id: 2, method: 'tools/list'});
   const initialize = {...replies[0].result, serverInfo: {name: 'vrch-mcp-remote', version: serverVersion + (buildRevision === 'unknown' ? '' : '+' + buildRevision)}};
