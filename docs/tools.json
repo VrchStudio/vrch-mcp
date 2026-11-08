@@ -1,5 +1,5 @@
 {
-  "version": "0.1.7",
+  "version": "0.1.8",
   "tools": [
     {
       "name": "apps_list",
@@ -9,6 +9,10 @@
         "properties": {
           "cursor": {
             "type": "string"
+          },
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
           }
         },
         "required": [],
@@ -29,6 +33,10 @@
         "properties": {
           "appId": {
             "type": "string"
+          },
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
           }
         },
         "required": [],
@@ -49,6 +57,10 @@
         "properties": {
           "name": {
             "type": "string"
+          },
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
           }
         },
         "required": [
@@ -77,6 +89,10 @@
               "string",
               "null"
             ]
+          },
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
           }
         },
         "required": [
@@ -105,6 +121,10 @@
           },
           "operationId": {
             "type": "string"
+          },
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
           }
         },
         "required": [
@@ -134,6 +154,10 @@
           },
           "operationId": {
             "type": "string"
+          },
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
           }
         },
         "required": [
@@ -160,6 +184,10 @@
           },
           "event": {
             "type": "object"
+          },
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
           }
         },
         "required": [
@@ -186,6 +214,10 @@
           },
           "originalAction": {
             "type": "string"
+          },
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
           }
         },
         "required": [
@@ -212,6 +244,10 @@
           },
           "expectedPackageDigest": {
             "type": "string"
+          },
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
           }
         },
         "required": [
@@ -238,6 +274,10 @@
           },
           "operationId": {
             "type": "string"
+          },
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
           }
         },
         "required": [
@@ -272,6 +312,10 @@
           },
           "operationId": {
             "type": "string"
+          },
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
           }
         },
         "required": [
@@ -317,6 +361,10 @@
             "items": {
               "type": "string"
             }
+          },
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
           }
         },
         "required": [
@@ -343,6 +391,10 @@
           },
           "operationId": {
             "type": "string"
+          },
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
           }
         },
         "required": [
@@ -362,7 +414,12 @@
       "description": "Read the actual active preview and device App bindings before input. Coordinates are normalized within the App viewport, independent of the device’s 150% browser zoom. Does not launch, link or switch the person’s preview.",
       "inputSchema": {
         "type": "object",
-        "properties": {},
+        "properties": {
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
+          }
+        },
         "required": [],
         "additionalProperties": false
       },
@@ -425,6 +482,10 @@
             "type": "integer",
             "minimum": 0,
             "maximum": 3000
+          },
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
           }
         },
         "required": [
@@ -465,6 +526,10 @@
           "event": {
             "type": "object",
             "description": "type: open/click/drag/scroll/key. open needs no coordinates. Pointer x,y and drag toX,toY: 0..1 of the whole host window. Scroll deltaX,deltaY: -2000..2000 CSS pixels. Keys: Tab/Enter/Escape/space/arrows/Home/End; optional shiftKey. No text or browser modifier shortcuts."
+          },
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
           }
         },
         "required": [
@@ -505,6 +570,10 @@
           "event": {
             "type": "object",
             "description": "type: guide_start/click/drag/scroll/text/key. guide_start has no coordinates and only presses the current first-open Guide Start. Pointer x,y and drag toX,toY: 0..1. Scroll deltaX,deltaY: -2000..2000. Text: ASCII, max2048. Key: Enter/Tab/Backspace/Delete/arrows/Home/End/Escape or one ASCII character; ctrlKey/altKey/shiftKey/metaKey booleans."
+          },
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
           }
         },
         "required": [
@@ -532,6 +601,10 @@
           },
           "path": {
             "type": "string"
+          },
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
           }
         },
         "required": [
@@ -567,6 +640,10 @@
               "string",
               "null"
             ]
+          },
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
           }
         },
         "required": [
@@ -605,6 +682,10 @@
           },
           "operationId": {
             "type": "string"
+          },
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
           }
         },
         "required": [
@@ -646,6 +727,10 @@
           },
           "operationId": {
             "type": "string"
+          },
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
           }
         },
         "required": [
@@ -666,7 +751,12 @@
       "description": "Pause the current shared file transfer.",
       "inputSchema": {
         "type": "object",
-        "properties": {},
+        "properties": {
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
+          }
+        },
         "required": [],
         "additionalProperties": false
       },
@@ -682,7 +772,12 @@
       "description": "Resume the current shared file transfer.",
       "inputSchema": {
         "type": "object",
-        "properties": {},
+        "properties": {
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
+          }
+        },
         "required": [],
         "additionalProperties": false
       },
@@ -698,7 +793,12 @@
       "description": "Cancel the current shared file transfer.",
       "inputSchema": {
         "type": "object",
-        "properties": {},
+        "properties": {
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
+          }
+        },
         "required": [],
         "additionalProperties": false
       },
@@ -718,6 +818,10 @@
           "message": {
             "type": "string",
             "maxLength": 280
+          },
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
           }
         },
         "required": [
@@ -751,6 +855,10 @@
             "minimum": 10,
             "maximum": 300,
             "default": 120
+          },
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
           }
         },
         "required": [
@@ -773,6 +881,10 @@
         "properties": {
           "resumeAI": {
             "type": "boolean"
+          },
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
           }
         },
         "required": [],
@@ -790,7 +902,12 @@
       "description": "Read actual enabled capabilities, targets, control owner and pause state for this approved connection. Unavailable capabilities do not prevent connection.",
       "inputSchema": {
         "type": "object",
-        "properties": {},
+        "properties": {
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
+          }
+        },
         "required": [],
         "additionalProperties": false
       },
@@ -803,7 +920,7 @@
     },
     {
       "name": "terminal_connect",
-      "description": "Join an invited device Terminal. Wait for the human to approve once. Approval grants terminal observation and on-demand screenshots; Apps invitations grant AI editing on approval; ordinary Terminal invitations require the human to grant input control.",
+      "description": "Join an invited device Terminal. Each invited host is a separate connection named by its connectionRef (the invitation host); connecting another host never replaces or disconnects one already connected. To resume a retained approval, pass that host URL with resume:true; no new invitation is needed. Wait for the human to approve once. Approval grants terminal observation and on-demand screenshots; Apps invitations grant AI editing on approval; ordinary Terminal invitations require the human to grant input control.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -828,7 +945,7 @@
     },
     {
       "name": "terminal_events",
-      "description": "Read terminal events and actual images shared by the human automatically. Call terminal_events({}) while waiting for ai_pending/approval and between actions. Omit waitSeconds for the normal 20-second wait; returns early on events. Does not take a screenshot. One complete queued capture batch is returned per call, with separate images for every captured screen.",
+      "description": "Read terminal events and actual images shared by the human automatically. Call terminal_events({}) while waiting for ai_pending/approval and between actions. Omit waitSeconds for the normal 20-second wait; returns early on events. Does not take a screenshot. One complete queued capture batch is returned per call, with separate images for every captured screen. Without connectionRef it reads every connected host; each event carries its connectionRef.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -838,6 +955,10 @@
             "maximum": 25,
             "default": 20,
             "description": "Optional; omit for 20 seconds. Valid range 0..25; returns early when events arrive."
+          },
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
           }
         },
         "required": [],
@@ -858,6 +979,10 @@
         "properties": {
           "data": {
             "type": "string"
+          },
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
           }
         },
         "required": [
@@ -881,6 +1006,10 @@
           "screen": {
             "type": "string",
             "description": "Optional: all, primary, or a display connector. Omit to follow the human setting."
+          },
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
           }
         },
         "required": [],
@@ -895,10 +1024,15 @@
     },
     {
       "name": "terminal_disconnect",
-      "description": "Disconnect this client. Retain the admitted session credential for resuming within its authorization.",
+      "description": "Disconnect one host connection (connectionRef; required when several are connected). Other hosts stay connected. Retains its admitted session credential for resuming within its authorization.",
       "inputSchema": {
         "type": "object",
-        "properties": {},
+        "properties": {
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
+          }
+        },
         "required": [],
         "additionalProperties": false
       },

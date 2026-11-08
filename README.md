@@ -27,17 +27,17 @@ this conversation while loading the tools; no README search is needed.
 
 ## Install a fixed release
 
-Current release: **0.1.7**. See [verification](docs/verification.md) for
+Current release: **0.1.8**. See [verification](docs/verification.md) for
 tested boundaries. This package is distributed through **GitHub Releases**,
 not the npm registry. With Node.js 22.4+ and npm on the AI execution computer:
 
 ```sh
-npm install --prefix "$HOME/.local/share/vrch-mcp/0.1.7" --omit=dev --ignore-scripts https://github.com/VrchStudio/vrch-mcp/releases/download/v0.1.7/vrch-mcp-0.1.7.tgz
+npm install --prefix "$HOME/.local/share/vrch-mcp/0.1.8" --omit=dev --ignore-scripts https://github.com/VrchStudio/vrch-mcp/releases/download/v0.1.8/vrch-mcp-0.1.8.tgz
 ```
 
 This normal package installation runs no installation scripts. It uses one
 fixed release and does not download the device's current script. Its entry is
-`~/.local/share/vrch-mcp/0.1.7/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs`.
+`~/.local/share/vrch-mcp/0.1.8/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs`.
 The release's `SHA256SUMS` and `release.json` identify its bytes and source commit.
 To verify before installing, download the tarball/checksums from that same
 release, compare `sha256sum` (Linux) or `shasum -a 256` (macOS), then install the
@@ -52,7 +52,7 @@ examples retain normal host approvals and do not approve device access.
 ### Codex CLI
 
 ```sh
-codex mcp add vrch -- "$(command -v node)" "$HOME/.local/share/vrch-mcp/0.1.7/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs" --mcp
+codex mcp add vrch -- "$(command -v node)" "$HOME/.local/share/vrch-mcp/0.1.8/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs" --mcp
 ```
 
 Use the host's supported MCP refresh. CLI0.162.1 `/mcp` lists tools; it does not
@@ -66,7 +66,7 @@ processes. No timeout tuning is needed for connection/approval waiting.
 ### Claude Code
 
 ```sh
-claude mcp add --transport stdio --scope user vrch -- "$(command -v node)" "$HOME/.local/share/vrch-mcp/0.1.7/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs" --mcp
+claude mcp add --transport stdio --scope user vrch -- "$(command -v node)" "$HOME/.local/share/vrch-mcp/0.1.8/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs" --mcp
 ```
 
 Keep this conversation; use the client's supported refresh or resume after its
@@ -76,7 +76,7 @@ required reload. Keep normal approvals enabled.
 ### Gemini CLI
 
 ```sh
-gemini mcp add --scope user vrch "$(command -v node)" "$HOME/.local/share/vrch-mcp/0.1.7/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs" --mcp
+gemini mcp add --scope user vrch "$(command -v node)" "$HOME/.local/share/vrch-mcp/0.1.8/node_modules/@vrchstudio/vrch-mcp/bin/vrch-mcp.mjs" --mcp
 ```
 
 Use `gemini mcp list` or `/mcp`, retaining normal folder trust and tool approvals.
@@ -105,6 +105,11 @@ and normal device approval, instead of installing this local package. See the
 - AI-side file paths belong to the execution computer, possibly a remote host.
   Upload completion does not publish/save/execute a file; workspace commit,
   publish and save are separate operations.
+- One MCP process can stay connected to several invited devices at once. Each
+  connection is named by its invitation host (for example `vrch-110.vrch.ai`),
+  returned by `terminal_connect` as `connectionRef`. With more than one
+  connected, pass `connectionRef` to act on, upload to or disconnect one device;
+  `terminal_events` without it reads all of them, each event naming its device.
 - `terminal_disconnect` retains the approved identity. Resume with
   `terminal_connect`, `resume:true` and that device's token-free
   `/apps/ai?channel=apps` URL. Busy is not permission to take over. Only the person
