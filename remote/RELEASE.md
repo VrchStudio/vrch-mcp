@@ -135,3 +135,15 @@ source, image and client identities. It does not replace the local STDIO package
 - Keep source/image identity, health, targeted acceptance and rollback references
   in the owning deployment record. Keep secrets, raw tool output and App content
   out of release notes.
+
+## Hosted 0.1.1 upgrade
+
+Adds device App observation: `apps_observe` with `target: "device"`, and `role: "output"` for the App's picture on a
+second screen. The tool's input schema gains `target` and `role`; no tool is added or removed. Devices need Pages with
+device observation (dev `8ff8dec5` or later, Runtime 319); an older device refuses the request and nothing else changes.
+
+This is an image upgrade only. Keep issuer, state directory, recovery key, verification key, environment file and
+edge configuration. Build once from the pushed source, validate on SG, then load the same image on EA; recreate only
+the `mcp` service with `--no-deps` and compare grant and connection identity digests before and after. Roll back
+by recreating `mcp` with the previous image. Tag `hosted-v0.1.1`; its GitHub release keeps `make_latest: false`.
+

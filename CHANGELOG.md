@@ -6,6 +6,10 @@
 
 - Observe the App running on the device with apps_observe (target device), and its picture on a second screen with role output; the local server now offers apps_observe too.
 
+## Hosted 0.1.1 - 2026-11-10
+
+- Observe the App running on the device, and its picture on a second screen, from hosted connections.
+
 ## 0.1.8
 
 - Stay connected to several devices at once, each with its own events, Apps control and file uploads; resuming one device never disconnects another.

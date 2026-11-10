@@ -291,7 +291,7 @@ STDIO server with an existing approved Apps invitation:
 | `apps_observe` with `target: "device"` | Read the App running on the device (Visuals Player 0.3.6, XY Scope 0.1.0): live DOM, one WebGL canvas layer and the App's console output, `role: "control"` |
 | `role: "output"` with the App's own binding | Read the App's picture on the HDMI second screen: viewport 1067x400, no text nodes, its own console output |
 | A device that does not know the role | Not run on a device; the unit test refuses a control document offered for an output request |
-| Hosted Remote MCP | Not part of this release |
+| Hosted Remote MCP | Hosted 0.1.1 carries the same code; its deployment and acceptance are recorded with that release |
 
 A device needs Pages with device observation (dev `8ff8dec5` or later, Runtime 319) for this tool; an older device
 answers `unknown_action` or the like and the tool reports it. Preview observation is unchanged.
