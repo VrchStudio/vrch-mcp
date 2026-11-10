@@ -1093,9 +1093,9 @@ const observeDigest=bytes=>observeHash('sha256').update(bytes).digest('hex');
 // In-frame observation is distinct from a native page or device screenshot.
 const observationTool = {
   name: 'apps_observe',
-  description: 'Observe one exact active App instance without screen sharing: the web Preview or browser Simulator (target preview, the default), or the App running on the device and its output picture on a second screen (target device; bindings from apps_input_targets, no workspaceId). Returns derived DOM/layout, readable Canvas pixel layers and App-reported logs (the App’s console output), so an App can report numbers it measures. Canvas images are separate layers, not a full screenshot; CSS/SVG rendering and missing/tainted layers are not inferred. Requires this connection’s current AI approval, control and the exact binding. Does not capture the device desktop or another tab; use take_screenshot for device pixels.',
+  description: 'Observe one exact active App instance without screen sharing: the web Preview or browser Simulator (target preview, the default), or the App running on the device (target device; binding from apps_input_targets, no workspaceId) and, with role output and that same binding, the picture it shows on a second screen. Returns derived DOM/layout, readable Canvas pixel layers and App-reported logs (the App’s console output), so an App can report numbers it measures. Canvas images are separate layers, not a full screenshot; CSS/SVG rendering and missing/tainted layers are not inferred. Requires this connection’s current AI approval, control and the exact binding. Does not capture the device desktop or another tab; use take_screenshot for device pixels.',
   annotations: {readOnlyHint:true, destructiveHint:false, idempotentHint:true, openWorldHint:true},
-  inputSchema: {type:'object', properties:{target:{type:'string',enum:['preview','device']},workspaceId:{type:'string'},instanceId:{type:'string'},generation:{type:'integer',minimum:1},expectedRevision:{type:'string'},maxSide:{type:'integer',minimum:1,maximum:1024}}, required:['instanceId','generation','expectedRevision'], additionalProperties:false}
+  inputSchema: {type:'object', properties:{target:{type:'string',enum:['preview','device']},role:{type:'string',enum:['control','output']},workspaceId:{type:'string'},instanceId:{type:'string'},generation:{type:'integer',minimum:1},expectedRevision:{type:'string'},maxSide:{type:'integer',minimum:1,maximum:1024}}, required:['instanceId','generation','expectedRevision'], additionalProperties:false}
 };
 // Structured observation of one exact App instance: the maker Preview through the maker's existing connection, or the
 // App running on the device (and its output picture) through the device's own My Apps window. Never a screenshot.
@@ -1119,10 +1119,13 @@ async function observePreview(entry,values,directory){
   if(entry.snapshotPending)throw observeFail('capture_busy');
   entry.snapshotPending=true;entry.requests++;let ticket,dir;
   try{
-    const {workspaceId,instanceId,generation,expectedRevision,maxSide=512,target='preview'}=values,device=target==='device';
-    if(!['preview','device'].includes(target)||!observeUUID(instanceId)||!Number.isSafeInteger(generation)||generation<1||(!device&&!observeUUID(workspaceId))||!/^[a-f0-9]{64}$/.test(expectedRevision||'')||!Number.isInteger(maxSide)||maxSide<1||maxSide>1024)throw observeFail('invalid_preview_binding');
-    ({ticket}=device?await entry.appRequest('device_observe_begin',{instanceId,generation,maxSide},{expectedRevision})
-      :await entry.appRequest('preview_observe_begin',{instanceId,generation,maxSide},{workspaceId,expectedRevision}));
+    const {workspaceId,instanceId,generation,expectedRevision,maxSide=512,target='preview',role='control'}=values,device=target==='device';
+    if(!['preview','device'].includes(target)||!['control','output'].includes(role)||(role==='output'&&!device)||!observeUUID(instanceId)||!Number.isSafeInteger(generation)||generation<1||(!device&&!observeUUID(workspaceId))||!/^[a-f0-9]{64}$/.test(expectedRevision||'')||!Number.isInteger(maxSide)||maxSide<1||maxSide>1024)throw observeFail('invalid_preview_binding');
+    // The output picture is named by the App's own binding; the device answers with the binding it reads.
+    let seen={instanceId,generation};
+    if(device){const begun=await entry.appRequest('device_observe_begin',{instanceId,generation,maxSide,...(role==='output'?{role}:{})},{expectedRevision});({ticket}=begun);
+      if(observeUUID(begun.instanceId)&&Number.isSafeInteger(begun.generation))seen={instanceId:begun.instanceId,generation:begun.generation};}
+    else ({ticket}=await entry.appRequest('preview_observe_begin',{instanceId,generation,maxSide},{workspaceId,expectedRevision}));
     const deadline=Date.now()+20000;let metadata;
     while(Date.now()<deadline){const status=await entry.appRequest('preview_observe_read',{ticket});
       if(status.phase==='failed')throw observeFail(status.code);
@@ -1130,12 +1133,13 @@ async function observePreview(entry,values,directory){
       await new Promise(resolve=>setTimeout(resolve,150));
     }
     if(!metadata)throw observeFail('observe_timeout');
-    if(metadata.source!==(device?'device-app-observation':'web-preview-observation')||metadata.instanceId!==instanceId||metadata.generation!==generation||metadata.revision!==expectedRevision||(!device&&metadata.workspaceId!==workspaceId)||!Number.isSafeInteger(metadata.size)||metadata.size<2||metadata.size>6*1024*1024)throw observeFail('observe_invalid');
+    if(role==='output'&&metadata.role!=='output')throw observeFail('observe_unavailable');   // a device that does not know the role reads the App itself
+    if(metadata.source!==(device?'device-app-observation':'web-preview-observation')||metadata.instanceId!==seen.instanceId||metadata.generation!==seen.generation||metadata.revision!==expectedRevision||(!device&&metadata.workspaceId!==workspaceId)||!Number.isSafeInteger(metadata.size)||metadata.size<2||metadata.size>6*1024*1024)throw observeFail('observe_invalid');
     await observeFiles.mkdir(observePath.join(directory,'workspace-transfers'),{recursive:true,mode:0o700});
     dir=await observeFiles.mkdtemp(observePath.join(directory,'workspace-transfers','observation-'));const path=observePath.join(dir,'observation.json');
     try{await entry.downloadObservation(path,ticket);}catch(error){if(!['transfer_conflict','unsupported_purpose'].includes(error.code))await entry.call('tools/call',{name:'file_cancel',arguments:{}}).catch(()=>{});throw error;}
     const bytes=await observeFiles.readFile(path);if(bytes.length!==metadata.size||observeDigest(bytes)!==metadata.sha256)throw observeFail('hash_mismatch');
-    const {result,images}=decodePreviewObservation(bytes,metadata,values),final=await entry.appRequest('preview_observe_read',{ticket});
+    const {result,images}=decodePreviewObservation(bytes,metadata,{...values,...seen}),final=await entry.appRequest('preview_observe_read',{ticket});
     if(final.phase!=='ready'||final.metadata?.sha256!==metadata.sha256)throw observeFail('capture_changed');
     await entry.appRequest('preview_observe_release',{ticket});ticket=null;
     // On the device, role says which instance was read: the App ('control') or its output picture ('output').
