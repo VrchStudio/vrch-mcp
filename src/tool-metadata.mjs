@@ -2,7 +2,7 @@
 const readOnly = new Set([
   'apps_list', 'apps_state', 'apps_operation_status', 'apps_input_targets',
   'apps_export_begin', 'apps_file_export', 'ai_capabilities', 'terminal_events',
-  'take_screenshot'
+  'take_screenshot', 'apps_observe'
 ]);
 const destructive = new Set([
   'apps_publish', 'apps_save', 'apps_import_commit', 'apps_file_commit',

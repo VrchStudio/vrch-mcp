@@ -23,3 +23,21 @@ test('observation keeps exact file bytes, rechecks access after download and rem
   deny=true;const refused=await observePreview(entry,values,root);assert.equal(refused.isError,true);assert.equal(refused.content.some(i=>i.type==='image'),false);assert.equal(JSON.parse(refused.content[0].text).code,'unauthorized');assert.equal(releases,2);assert.equal(entry.snapshotPending,false);assert.deepEqual(await readdir(join(root,'workspace-transfers')),[]);
  }finally{await rm(root,{recursive:true,force:true});}
 });
+test('a device observation asks the device, needs no workspace and is never taken for a Preview one',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'vrch-observe-'));
+ const device=fixture();device.result.binding.mode='device';const payload=bytes(device),hash=createHash('sha256').update(payload).digest('hex');
+ const asked=[],{workspaceId,...binding}=values;let source='device-app-observation',role='output';
+ const entry={requests:0,appRequest:async(action,args,frame)=>{asked.push([action,frame]);if(action.endsWith('_begin'))return {ticket:'fixture-ticket'};if(action==='preview_observe_release')return {};
+  return {phase:'ready',metadata:{role,source,size:payload.length,sha256:hash,binding:{...binding,revision:values.expectedRevision,appId,mode:'device'}}};},downloadObservation:async path=>writeFile(path,payload)};
+ try{
+  const result=await observePreview(entry,{...binding,target:'device'},root);
+  assert.equal(result.isError,undefined,JSON.stringify(result.content[0]));assert.deepEqual(asked[0],['device_observe_begin',{expectedRevision:values.expectedRevision}]);
+  assert.equal(result.structuredContent.target,'device');assert.equal(result.structuredContent.role,'output');assert.equal(result.structuredContent.binding.mode,'device');assert.equal(result.content[1].data,png);
+  assert.deepEqual(await readdir(join(root,'workspace-transfers')),[],'the folder is made on demand and left empty');
+  // The same document is refused as a Preview observation, and a Preview document as a device one.
+  assert.equal(JSON.parse((await observePreview(entry,values,root)).content[0].text).code,'observe_invalid');
+  source='web-preview-observation';assert.equal(JSON.parse((await observePreview(entry,{...binding,target:'device'},root)).content[0].text).code,'observe_invalid');
+  assert.equal(JSON.parse((await observePreview(entry,{...binding,target:'screen'},root)).content[0].text).code,'invalid_preview_binding');
+  assert.equal(entry.snapshotPending,false);
+ }finally{await rm(root,{recursive:true,force:true});}
+});

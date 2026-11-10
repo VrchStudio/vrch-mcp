@@ -22,7 +22,7 @@ const shared = await read('src/file-transfer.mjs');
 const names = [...shared.matchAll(/^export (?:const|function|class) (\w+)/gm)].map(match => match[1]);
 const imports = new Set(["import { pathToFileURL } from 'node:url';"]);
 const parts = [`// BEGIN GENERATED SHARED FILE V2\n// Source: src/file-transfer.mjs in the pinned VRCH MCP release.\nconst sharedFileV2 = (() => {\n${shared.replace(/^export /gm, '')}\nreturn {${names.join(', ')}};\n})();\n// END GENERATED SHARED FILE V2`];
-for (const name of ['client', 'version', 'tool-metadata', 'mcp', 'cli']) {
+for (const name of ['client', 'version', 'tool-metadata', 'observe', 'mcp', 'cli']) {
   let source = name === 'version' ? version : await read(`src/${name}.mjs`);
   source = source.replace(/^import .*;\n/gm, line => {
     if (line.includes("from 'node:")) imports.add(line.trim());

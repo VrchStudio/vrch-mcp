@@ -810,6 +810,56 @@
       }
     },
     {
+      "name": "apps_observe",
+      "description": "Observe one exact active App instance without screen sharing: the web Preview or browser Simulator (target preview, the default), or the App running on the device and its output picture on a second screen (target device; bindings from apps_input_targets, no workspaceId). Returns derived DOM/layout, readable Canvas pixel layers and App-reported logs (the App’s console output), so an App can report numbers it measures. Canvas images are separate layers, not a full screenshot; CSS/SVG rendering and missing/tainted layers are not inferred. Requires this connection’s current AI approval, control and the exact binding. Does not capture the device desktop or another tab; use take_screenshot for device pixels.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "enum": [
+              "preview",
+              "device"
+            ]
+          },
+          "workspaceId": {
+            "type": "string"
+          },
+          "instanceId": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "expectedRevision": {
+            "type": "string"
+          },
+          "maxSide": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1024
+          },
+          "connectionRef": {
+            "type": "string",
+            "description": "The host connection to act on, as returned by terminal_connect (for example vrch-110.vrch.ai). Required when several hosts are connected."
+          }
+        },
+        "required": [
+          "instanceId",
+          "generation",
+          "expectedRevision"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
       "name": "ai_report",
       "description": "Report the current action, result or next step to the person in one or two brief sentences in their language. Works while waiting for Allow AI and after approval; never include raw commands, secrets or internal reasoning.",
       "inputSchema": {

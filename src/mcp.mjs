@@ -1,6 +1,8 @@
 import { createAIClient, validateHTTPOrigin, fileError } from './client.mjs';
 import { VERSION } from './version.mjs';
 import { toolAnnotations } from './tool-metadata.mjs';
+import { observationTool, observePreview } from './observe.mjs';
+import * as observeOS from 'node:os';
 
 // MCP supplies native image content, never a path pretending to be model input.
 // Human captures are queued automatically and included with the next terminal result.
@@ -94,6 +96,8 @@ export function createTerminalMCP({ send, createClient = createAIClient, allowHT
     {name: 'file_upload', description: 'Upload a local regular file through the shared resumable file transport. App packages must use .vrchapp and remain private until inspect/commit.', inputSchema: schema({path: {type: 'string'}, purpose: {type: 'string', enum: ['app-package', 'app-workspace', 'boot-image']}, workspaceId:{type:'string'}, operationId: {type: 'string'}}, ['path', 'purpose'])},
     {name: 'file_download', description: 'Download an authorized fixed App package reference to a new local path, verifying all bytes before an atomic no-overwrite commit.', inputSchema: schema({path: {type: 'string'}, maxBytes: {type: 'integer', minimum: 0, maximum: 134217728}, purpose:{type:'string',enum:['app-package','app-workspace']}, reference: {type: 'string'}, operationId: {type: 'string'}}, ['path', 'reference'])},
     ...['pause', 'resume', 'cancel'].map(action => ({name: 'file_' + action, description: action[0].toUpperCase() + action.slice(1) + ' the current shared file transfer.', inputSchema: schema()}))
+    // The hosted bridge adds its own apps_observe around this server; the local server offers it directly.
+    , ...(multiple ? [{name: observationTool.name, description: observationTool.description, inputSchema: structuredClone(observationTool.inputSchema)}] : [])
   ];
   const tools = [
     ...appTools,
@@ -178,6 +182,14 @@ export function createTerminalMCP({ send, createClient = createAIClient, allowHT
         if (name === 'apps_control') {reply({content:[text(await client.appControl(args))]}); return;}
         if (name === 'apps_host_input') {reply({content:[text(await client.appHostInput(args))]}); return;}
         if (name === 'apps_interface_input') {reply({content:[text(await client.appInterface(args))]}); return;}
+        if (name === 'apps_observe') {
+          // One observation at a time for each host; the document is read into a private temporary folder and removed.
+          const entry = c.observation ||= {requests: 0, snapshotPending: false,
+            appRequest: (...values) => c.client.appsRequest(...values),
+            downloadObservation: (path, ticket) => c.client.downloadFile(path, {purpose: 'app-observation', resource: {ticket}, maxBytes: 6 * 1024 * 1024}),
+            call: () => c.client.cancelTransfer()};
+          reply(await observePreview(entry, args, observeOS.tmpdir() + '/vrch-mcp-' + process.pid)); return;
+        }
         if (name.startsWith('apps_')) {
           const {workspaceId, expectedRevision, operationId, ...values} = args;
           const result = await client.appsRequest(name === 'apps_exit' ? 'stop' : name.slice(5), values, {workspaceId, expectedRevision, operationId});

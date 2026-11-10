@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Observe the App running on the device, and its output picture, with apps_observe (target device); the local server now offers apps_observe too.
+
 ## 0.1.8
 
 - Stay connected to several devices at once, each with its own events, Apps control and file uploads; resuming one device never disconnects another.
