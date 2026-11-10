@@ -1,4 +1,4 @@
-# Vrch Synth - Hosted MCP 0.1.0
+# Vrch Synth - Hosted MCP 0.1.1
 
 This separately versioned, private service package adds Streamable HTTP and device-approved OAuth. SG has real ChatGPT/Codex and Claude connections; Claude and the installed SG plugin have completed My Apps editing, observation and device checks. Gemini automatic registration reached the pairing page; its complete OAuth/tool acceptance is still pending. The dependency-free local STDIO release remains 0.1.7. The production endpoint `https://mcp.vrch.ai/synth` is deployed under the name **Vrch Synth**, without an environment suffix. SG testing uses `https://mcp-sg.vrch.ai/synth` and the connector label **Vrch Synth (SG Test)**. Production Claude OAuth/pairing and complete editing/observation checks passed on110 and130 with the same connector identity. Each device used its own invitation and approval; the original saved packages and device revisions were preserved. ChatGPT published-client metadata currently returns HTTP403 from the production host, so first-time ChatGPT OAuth there remains unavailable. See the [deployment record and release procedure](RELEASE.md).
 
