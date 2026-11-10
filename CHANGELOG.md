@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.9
+
 - Observe the App running on the device with apps_observe (target device), and its picture on a second screen with role output; the local server now offers apps_observe too.
 
 ## 0.1.8

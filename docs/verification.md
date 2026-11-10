@@ -280,3 +280,19 @@ Real STDIO and WebSocket tests verify capability refusal on older devices,
 device acknowledgement before readiness, blocked ordinary input while private,
 and completion metadata. The device PTY implementation is tested in Viewer Pages;
 this package does not emulate a real device deployment or AI-host reload.
+
+## Device App observation (0.1.9)
+
+2026-11-10, vrch-130 (CM5, Pages dev `8ff8dec5`, Runtime 319), Linux / Node 22.23.4, this source run as the local
+STDIO server with an existing approved Apps invitation:
+
+| Boundary | Result |
+| --- | --- |
+| `apps_observe` with `target: "device"` | Read the App running on the device (Visuals Player 0.3.6, XY Scope 0.1.0): live DOM, one WebGL canvas layer and the App's console output, `role: "control"` |
+| `role: "output"` with the App's own binding | Read the App's picture on the HDMI second screen: viewport 1067x400, no text nodes, its own console output |
+| A device that does not know the role | Not run on a device; the unit test refuses a control document offered for an output request |
+| Hosted Remote MCP | Not part of this release |
+
+A device needs Pages with device observation (dev `8ff8dec5` or later, Runtime 319) for this tool; an older device
+answers `unknown_action` or the like and the tool reports it. Preview observation is unchanged.
+

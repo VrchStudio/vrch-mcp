@@ -1058,7 +1058,7 @@ function createAIClient(invitationURL, { WebSocketImpl = globalThis.WebSocket, e
 }
 
 // Generated from package.json by scripts/build.mjs.
-const VERSION = '0.1.8';
+const VERSION = '0.1.9';
 
 // These hints describe effects; they do not grant device permissions.
 const readOnly = new Set([
