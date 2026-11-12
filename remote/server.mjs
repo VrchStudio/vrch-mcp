@@ -21,7 +21,8 @@ const sdkValidation = process.env.VRCH_MCP_SDK_VALIDATION === 'true';
 if (sdkValidation) clients.set(issuer + '/sdk-client.json', {tokenEndpointAuthMethod: 'none', redirectUris: [issuer + '/sdk-callback']});
 // Dynamic Google registration remains available if a CIMD host is temporarily offline.
 const browserOrigins=(process.env.VRCH_MCP_BROWSER_ORIGINS||'').split(',').map(value=>value.trim()).filter(Boolean);
-const browserTargets=browserOrigins.length?createBrowserTargets({filename:join(directory,'browser-targets.sqlite'),issuer,allowedOrigins:browserOrigins}):null;
+const browserTargets=browserOrigins.length?createBrowserTargets({filename:join(directory,'browser-targets.sqlite'),issuer,allowedOrigins:browserOrigins,onDiagnostic:event=>console.info(JSON.stringify(event)),
+    registrationLimit:Number(process.env.VRCH_MCP_BROWSER_REGISTRATION_LIMIT || 20)}):null;
 const deviceVerifier=createDevicePairingVerifier({publicKey:readFileSync(required('VRCH_MCP_DEVICE_VERIFY_KEY_FILE')),issuer:required('VRCH_MCP_DEVICE_ISSUER')});
 const auth = createPairingAuthorization({filename: join(directory, 'auth.sqlite'), issuer, resource, clients,
   verifyPairing: (expected,proof)=>proof?.kind==='vrch-browser-target-v1'&&browserTargets?browserTargets.verifyPairing(expected,proof):deviceVerifier(expected,proof)});

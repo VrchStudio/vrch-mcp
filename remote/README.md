@@ -209,3 +209,19 @@ unchanged by Preview-only publication and observation. The original native PNG
 `apps_preview_snapshot` contract remains separate and still requires sharing.
 
 A retained AI connection belongs to one approved My Apps access session. Refreshing that same tab and ordinary service/agent restarts preserve it. Ending or replacing the human access session ends its AI approval; the old connectionRef must not resume into a replacement session. OAuth connector authorization is separate. `resumable:true` offers an attempt against retained device authorization, not permission to resurrect ended access.
+
+## Hosted request limits
+
+The edge trusts `CF-Connecting-IP` only from the local Cloudflare proxy on
+127.0.0.1. Connector setup and WebSocket upgrades use a separate per-IP budget
+(40 requests/second, burst 200). `/synth` delegates its limit to the authenticated
+HTTP handler: 5 requests/second, burst 30, per issuer/principal/OAuth client.
+Access-token refresh retains the same allowance; one user's excess traffic does
+not consume another user's budget. HTTP 429 includes `Retry-After`; rejected
+requests are not dispatched to tools. Invalid credentials still return 401.
+
+`VRCH_MCP_BROWSER_REGISTRATION_LIMIT` sets new browser identities per minute for
+the service (default 20; the SG capacity setting is 200). Reconnecting a retained
+identity does not consume that registration allowance. The 512-socket and
+4096-record limits are unchanged. The nginx template and this environment setting
+are deployment inputs; changing source does not alter an existing EA deployment.

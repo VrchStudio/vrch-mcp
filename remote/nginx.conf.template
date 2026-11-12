@@ -1,16 +1,31 @@
 # Render MCP_HOST before installation. TLS terminates at the existing SG or EA edge.
-# This file belongs in nginx's http context; access logs must not retain OAuth codes.
-limit_req_zone $binary_remote_addr zone=vrch_mcp_auth:1m rate=5r/s;
+# Trust the client address only from the local Cloudflare proxy, never arbitrary peers.
+# Access logs must not retain OAuth codes.
+limit_req_zone $binary_remote_addr zone=vrch_mcp_onboarding:1m rate=40r/s;
 server {
     listen 127.0.0.1:18917;
     server_name MCP_HOST;
+    set_real_ip_from 127.0.0.1;
+    real_ip_header CF-Connecting-IP;
     access_log off;
     client_max_body_size 256k;
+    # Tool allowance belongs to the verified OAuth principal in remote-http.mjs.
+    # A shared AI-provider IP must not merge otherwise independent grants.
+    location = /synth {
+        proxy_pass http://127.0.0.1:18916;
+        proxy_set_header Host MCP_HOST;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header Connection "";
+        proxy_http_version 1.1;
+        proxy_buffering off;
+        proxy_read_timeout 30s;
+    }
     location = /synth/targets {
-        limit_req zone=vrch_mcp_auth burst=30 nodelay;
+        limit_req zone=vrch_mcp_onboarding burst=200 nodelay;
         limit_req_status 429;
         proxy_pass http://127.0.0.1:18916;
         proxy_set_header Host MCP_HOST;
+        proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_http_version 1.1;
@@ -18,10 +33,11 @@ server {
         proxy_read_timeout 75s;
     }
     location / {
-        limit_req zone=vrch_mcp_auth burst=30 nodelay;
+        limit_req zone=vrch_mcp_onboarding burst=200 nodelay;
         limit_req_status 429;
         proxy_pass http://127.0.0.1:18916;
         proxy_set_header Host MCP_HOST;
+        proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header Connection "";
         proxy_http_version 1.1;
         proxy_buffering off;

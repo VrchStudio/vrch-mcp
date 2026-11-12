@@ -161,7 +161,7 @@ hostedTest('browser targets keep approvals across restart without replaying call
     while (!(await a.next(message => message.type === 'call')).epoch);
     a.ws.close();
     assert.equal(code(await interrupted), 'connection_interrupted');
-    assert.equal((await ai.ended()).code, 'transport_disconnected');
+    assert.equal((await ai.ended()).code, 'browser_peer_closed');
     assert.equal(code(await ai.request('apps_state', {})), 'disconnected');
 
     const a2 = await browser(h.port, {hello: {targetId: idA, secret: secretA}});
@@ -308,8 +308,8 @@ hostedTest('a live owner cannot be replaced; idle unapproved targets expire with
     const joiningB=agent(h.targets,await h.targets.resolve(inviteB.url),{connectionRef:REF2});joiningB.start();
     await b.next(m=>m.type==='ai_join');
     a.ws.close();b.ws.close();await Promise.all([a.closed,b.closed]);
-    assert.equal((await ai.ended()).code,'transport_disconnected');
-    assert.equal((await joiningB.ended()).code,'request_disconnected');
+    assert.equal((await ai.ended()).code,'browser_peer_closed');
+    assert.equal((await joiningB.ended()).code,'browser_peer_closed');
     now+=2000;
     const c=await browser(h.port);assert.equal(c.welcome.type,'hello');
     const restored=await browser(h.port,{hello:{targetId:a.welcome.targetId,secret:a.welcome.secret}});
@@ -341,4 +341,23 @@ hostedTest('router recovers only a durable browser approval after interruption b
     assert.equal(owner.welcome.grant,null);
     const unapproved=await call('terminal_connect',{connectionRef:pending.connectionRef,resume:true});assert.equal(unapproved.phase,'denied');assert.equal(unapproved.resumable,false);assert(!owner.queue.some(m=>m.type==='ai_join'));
   }finally{router?.close();h.stop();}
+});
+
+hostedTest('pending reports are acknowledged without granting tools; heartbeat loss has a safe reason', async () => {
+  const diagnostics=[],h=await harness({pingMs:80,onDiagnostic:event=>diagnostics.push(event)});
+  try{
+    const b=await browser(h.port,{options:{autoPong:false}}),invite=(await b.call('invite')).result;
+    const ai=agent(h.targets,await h.targets.resolve(invite.url),{connectionRef:REF1});ai.start();
+    const join=await b.next(m=>m.type==='ai_join');
+    assert.equal(code(await ai.request('apps_read_text',{})),'disconnected');
+    const reporting=ai.request('ai_report',{message:'Waiting for approval.'}),frame=await b.next(m=>m.type==='pending_report');
+    assert.equal(frame.requestId,join.requestId);assert.equal(frame.connectionRef,REF1);assert.equal(frame.approvalId,undefined);
+    b.send({type:'result',id:frame.id,result:{content:[{type:'text',text:'{"reported":true}'}],structuredContent:{reported:true}}});
+    assert.equal((await reporting).structuredContent.reported,true);
+    assert.equal(code(await ai.request('ai_report',{message:'x'.repeat(281)})),'invalid_request');
+    assert.equal((await ai.ended()).code,'browser_heartbeat_timeout');
+    assert.equal(diagnostics[0].code,'browser_heartbeat_timeout');assert.equal(diagnostics[0].closeCode,1006);
+    assert.deepEqual(Object.keys(diagnostics[0]).sort(),['closeCode','code','event','inFlight','uptimeMs']);
+    assert.equal(code(await ai.request('ai_report',{message:'Late'})),'disconnected');
+  }finally{h.stop();}
 });
