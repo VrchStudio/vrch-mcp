@@ -290,6 +290,28 @@ hostedTest('public entry bounds registration, first frame and control frame size
 });
 
 
+hostedTest('a tab of the same browser takes over the live owner only when asked', async () => {
+  const h=await harness();
+  try {
+    const a=await browser(h.port);const credentials={targetId:a.welcome.targetId,secret:a.welcome.secret};
+    const invitation=(await a.call('invite')).result;
+    const ai=agent(h.targets,await h.targets.resolve(invitation.url),{connectionRef:REF1});ai.start();
+    const join=await a.next(m=>m.type==='ai_join');await a.call('decision',{requestId:join.requestId,connectionRef:REF1,allow:true});
+    await ai.until(e=>e.type==='collaboration');
+    const wrongType=await browser(h.port,{hello:{...credentials,takeOver:'yes'}});
+    assert.equal(wrongType.welcome.code,'invalid_request');assert.equal(await wrongType.closed,1008);
+    const stranger=await browser(h.port,{hello:{targetId:credentials.targetId,secret:'x'.repeat(43),takeOver:true}});
+    assert.equal(stranger.welcome.code,'target_unauthorized');assert.equal(await stranger.closed,4401);
+    const b=await browser(h.port,{hello:{...credentials,takeOver:true}});
+    assert.equal(b.welcome.type,'hello');assert.equal(b.welcome.targetId,credentials.targetId);assert.equal(b.welcome.grant.connectionRef,REF1,'the approval stays with the target');
+    assert.equal((await a.next(m=>m.type==='error')).code,'target_moved');assert.equal(await a.closed,4410);
+    assert.equal((await ai.ended()).code,'disconnected','the AI bound to the old tab ends as when a tab closes');
+    const c=await browser(h.port,{hello:credentials});
+    assert.equal(c.welcome.code,'target_busy','without takeOver the new owner is not replaced');assert.equal(await c.closed,4409);
+    assert.equal((await b.call('invite')).error.code,'ai_already_approved','the new tab serves the target');
+  } finally {h.stop();}
+});
+
 hostedTest('a live owner cannot be replaced; idle unapproved targets expire without deleting approvals', async () => {
   let now=Date.now();const h=await harness({clock:()=>now,maxTargets:2,idleTargetMs:1000,registrationLimit:20});
   try {

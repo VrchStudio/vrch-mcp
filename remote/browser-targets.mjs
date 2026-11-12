@@ -331,8 +331,18 @@ export function createBrowserTargets({filename, issuer, allowedOrigins, clock = 
       if (!row || !same(row.secret_hash, sha(message.secret)) || row.origin !== origin) throw fail('target_unauthorized');
       targetId = row.id;
       // One live owner socket per target. A dead network peer is cleared by
-      // the heartbeat; a second tab never silently takes over.
-      if (sessions.has(targetId)) throw fail('target_busy');
+      // the heartbeat; a second tab never silently takes over. A tab of the same
+      // browser (it holds the target secret) where the person asked for AI sends
+      // takeOver: the old socket is told target_moved and closed (4410), and its
+      // bound AI ends as when a tab closes.
+      if (message.takeOver !== undefined && typeof message.takeOver !== 'boolean') throw fail('invalid_request');
+      const current = sessions.get(targetId);
+      if (current) {
+        if (message.takeOver !== true) throw fail('target_busy');
+        detach(current, 'disconnected');
+        try {current.ws.send(JSON.stringify({type: 'error', code: 'target_moved'}));} catch {}
+        current.ws.close(4410, 'target_moved');
+      }
       db.prepare('UPDATE browser_targets SET last_seen=? WHERE id=?').run(clock(), targetId);
     }
     const session = {targetId, ws, capabilities, pending: null, binding: null, calls: new Map(), reviews: new Map(), pairing: false};
