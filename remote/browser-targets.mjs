@@ -49,7 +49,7 @@ function openDatabase(filename) {
   return db;
 }
 
-export function createBrowserTargets({filename, issuer, allowedOrigins, clock = () => Date.now(),
+export function createBrowserTargets({filename, issuer, allowedOrigins, clock = () => Date.now(), onDiagnostic = () => {},
   helloTimeoutMs = 10000, callTimeoutMs = 45000, pingMs = 20000, inviteTtlMs = 600000,
   registrationLimit = 20, registrationWindowMs = 60000, maxSockets = 512,
   maxTargets = 4096, idleTargetMs = 24 * 3600000, sweepMs = 3600000,
@@ -82,7 +82,7 @@ export function createBrowserTargets({filename, issuer, allowedOrigins, clock = 
 
   const heartbeat = setInterval(() => {
     for (const ws of live) {
-      if (ws.vrchAlive === false) {ws.terminate(); continue;}
+      if (ws.vrchAlive === false) {ws.vrchCloseReason='browser_heartbeat_timeout';ws.terminate(); continue;}
       ws.vrchAlive = false; try {ws.ping();} catch {}
     }
   }, pingMs);
@@ -154,8 +154,8 @@ export function createBrowserTargets({filename, issuer, allowedOrigins, clock = 
     const {targetId} = binding.target, session = sessions.get(targetId), row = approvalOf(targetId);
     if (binding.resume) {
       if (!row || row.connection_ref !== binding.connectionRef || !same(row.oauth_client, binding.oauthClientId)) return end(binding, 'ai_resume_denied');
-      if (!session) return end(binding, 'transport_disconnected');
-      if (session.binding && session.binding !== binding) end(session.binding, 'transport_disconnected');
+      if (!session) return end(binding, 'browser_offline');
+      if (session.binding && session.binding !== binding) end(session.binding, 'browser_connection_replaced');
       return bind(session, binding, row, {type: 'ai_resumed', leaseExpiresAt: 0});
     }
     const inviteHash = binding.target.inviteHash;
@@ -193,19 +193,21 @@ export function createBrowserTargets({filename, issuer, allowedOrigins, clock = 
 
   function request(binding, name, args) {
     const session = binding.session;
-    if (closed || binding.phase !== 'attached' || session?.binding !== binding || session.ws.readyState !== 1) return Promise.resolve(notSent('disconnected'));
+    const pendingReport=name==='ai_report'&&binding.phase==='pending'&&session?.pending?.binding===binding&&session.pending.expiresAt>clock();
+    if (closed || !pendingReport&&(binding.phase !== 'attached' || session?.binding !== binding) || session?.ws.readyState !== 1) return Promise.resolve(notSent('disconnected'));
     if (typeof name !== 'string' || !TOOL.test(name) || !plain(args)) return Promise.resolve(notSent('invalid_request'));
     const row = approvalOf(binding.target.targetId);
-    if (!row || row.connection_ref !== binding.connectionRef) return Promise.resolve(notSent('approval_required'));
-    if (row.paused) return Promise.resolve(notSent('ai_paused'));
+    if (!pendingReport&&(!row || row.connection_ref !== binding.connectionRef)) return Promise.resolve(notSent('approval_required'));
+    if (row?.paused) return Promise.resolve(notSent('ai_paused'));
     if (binding.calls.size >= maxPending) return Promise.resolve(notSent('busy'));
+    if(pendingReport&&(typeof args.message!=='string'||!args.message.trim()||args.message.length>280))return Promise.resolve(notSent('invalid_request'));
     const id = token(16), deadlineAt = clock() + callTimeoutMs;
     let frame;
-    try {frame = JSON.stringify({type: 'call', id, connectionRef: binding.connectionRef, approvalId: row.id, epoch: row.epoch, name, arguments: args, deadlineAt, timeoutMs: callTimeoutMs});}
+    try {frame = JSON.stringify({type: pendingReport?'pending_report':'call', ...(pendingReport?{requestId:session.pending.requestId}:{}), id, connectionRef: binding.connectionRef, approvalId: row?.id, epoch: row?.epoch, name, arguments: args, deadlineAt, timeoutMs: callTimeoutMs});}
     catch {return Promise.resolve(notSent('invalid_request'));}
     if (Buffer.byteLength(frame) > maxCallBytes) return Promise.resolve(notSent('request_too_large'));
     return new Promise(resolve => {
-      const call = {id, epoch: row.epoch, binding, session, resolve, done: false};
+      const call = {id, epoch: row?.epoch, binding, session, resolve, done: false};
       call.timer = setTimeout(() => settle(call, unknown('request_timeout')), callTimeoutMs);
       call.timer.unref?.();
       binding.calls.set(id, call); session.calls.set(id, call);
@@ -215,8 +217,8 @@ export function createBrowserTargets({filename, issuer, allowedOrigins, clock = 
 
   function detach(session, code) {
     if (sessions.get(session.targetId) === session) sessions.delete(session.targetId);
-    if (session.pending) end(session.pending.binding, code === 'service_restarted' ? code : 'request_disconnected');
-    if (session.binding) end(session.binding, code === 'service_restarted' ? code : 'transport_disconnected');
+    if (session.pending) end(session.pending.binding, code);
+    if (session.binding) end(session.binding, code);
     for (const call of [...session.calls.values()]) settle(call, unknown('connection_interrupted'));
     session.reviews.clear();
   }
@@ -358,11 +360,11 @@ export function createBrowserTargets({filename, issuer, allowedOrigins, clock = 
   }
 
   function onSocket(ws, origin) {
-    live.add(ws); ws.vrchAlive = true;
+    live.add(ws); ws.vrchAlive = true;const openedAt=clock();
     let session = null;
     const timer = setTimeout(() => ws.close(4408, 'hello_timeout'), helloTimeoutMs);
     ws.on('pong', () => {ws.vrchAlive = true;});
-    ws.on('error', () => {});
+    ws.on('error', () => {ws.vrchCloseReason||='browser_socket_error';});
     ws.on('message', (data, binary) => {
       if (binary) {ws.close(1003, 'text_only'); return;}
       let message;
@@ -378,10 +380,12 @@ export function createBrowserTargets({filename, issuer, allowedOrigins, clock = 
         ws.close(closeCodes[code], code);
       }
     });
-    ws.on('close', () => {
+    ws.on('close', (closeCode) => {
       clearTimeout(timer); live.delete(ws);
       if (session && sessions.get(session.targetId) === session) {
-        detach(session, 'disconnected');
+        const code=closed?'service_restarted':ws.vrchCloseReason||(closeCode===1000||closeCode===1001||closeCode===1005?'browser_peer_closed':closeCode===1006?'browser_connection_lost':'browser_protocol_closed');
+        try{onDiagnostic({event:'browser_disconnected',code,closeCode,inFlight:session.calls.size,uptimeMs:Math.max(0,clock()-openedAt)});}catch{}
+        detach(session, code);
         if (!closed) db.prepare('UPDATE browser_targets SET last_seen=? WHERE id=?').run(clock(), session.targetId);
       }
     });

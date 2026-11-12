@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Remix official Apps through AI and show progress before browser approval.
+- Explain missing Preview workspace ids and browser disconnect causes.
+
+- Keep each authorized user's hosted request allowance independent, with retry timing when busy.
+- Separate connector setup from daily App use and allow configurable browser onboarding capacity.
+
 ## 0.1.9
 
 - Observe the App running on the device with apps_observe (target device), and its picture on a second screen with role output; the local server now offers apps_observe too.

@@ -53,7 +53,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
     const value = db.prepare('SELECT * FROM connections WHERE id=? AND owner=?').get(reference, owner(identity));
     if (!value) throw fail('context_mismatch'); return value;
   };
-  const resumable = record => record.phase === 'disconnected' && ['transport_disconnected','idle_timeout','service_restarted','client_closed'].includes(record.code) || record.device.startsWith('web_') && record.phase === 'request_disconnected';
+  const resumable = record => record.phase === 'disconnected' && ['transport_disconnected','browser_offline','browser_connection_replaced','browser_peer_closed','browser_connection_lost','browser_socket_error','browser_heartbeat_timeout','browser_protocol_closed','idle_timeout','service_restarted','client_closed'].includes(record.code) || record.device.startsWith('web_') && record.phase === 'request_disconnected';
   const recovery = record => ({resumable:resumable(record),...(resumable(record)?{message:'Resume this original connectionRef with terminal_connect({connectionRef,resume:true}); retryable:false prohibits automatic replay of the interrupted tool call. Resume still checks the retained target authorization.'}:{})});
   const reference = {text:sdkReference,size:Buffer.byteLength(sdkReference),sha256:digest(sdkReference),reviewedPagesRevision,serviceRevision:buildRevision};
   const snapshot = record => ({connectionRef: record.id, phase: record.phase, retryable: false, ...recovery(record),
@@ -204,6 +204,7 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
       tool.inputSchema.properties.connectionRef = {type: 'string'};
       tool.inputSchema.required = [...tool.inputSchema.required, 'connectionRef'];
       if (durable.has(tool.name)) {tool.inputSchema.properties.operationId = {type: 'string', format: 'uuid'}; if (!tool.inputSchema.required.includes('operationId')) tool.inputSchema.required.push('operationId');}
+      if (tool.name === 'apps_create' && browserTargets) {tool.inputSchema.properties.sourceAppId={type:'string',description:'Optional official App id from apps_list, browser targets only. Copies its verified package into a new local workspace.'};tool.inputSchema.required=tool.inputSchema.required.filter(key=>key!=='name');tool.description='Create and select a new local App workspace. On browser targets, supply sourceAppId from apps_list to Remix an official App; name is optional for Remix and required for a blank App. Remix preserves files, icon and capabilities under a new App id. Edit with apps_read_text/apps_write_text, then publish_preview and save.';}
       if (tool.name === 'apps_operation_status') tool.inputSchema.properties.originalAction.description = 'Original durable action without apps_: create, open, publish_preview, publish, save, launch or write_text. Not control/interface input; keep the original connectionRef and operationId.';
       if (tool.name === 'apps_interface_input') tool.description = 'Operate an explicit active App interface. On updated web Preview/Simulator targets, event click is one atomic ordinary click; guide_start starts the current Guide. Do not split a click into remote pointerdown/up calls, which can trigger long presses. Device targets also support drag, scroll, ASCII text and keys. Host/OS permission dialogs are excluded.';
       if (tool.name === 'terminal_events') {tool.inputSchema.properties.waitSeconds.maximum = 20; tool.inputSchema.properties.waitSeconds.description = 'Optional; omit for 20 seconds. Valid range 0..20; returns early when events arrive.'; tool.description = 'Read this connection’s repeatable approval/connection state and queued events. waitSeconds defaults to 20 and cannot exceed 20; ending this wait never cancels approval or a sent operation.';}
@@ -284,6 +285,8 @@ export async function createRemoteRouter({filename, credentialDirectory, encrypt
     if (!['terminal_events', 'ai_report', 'ai_capabilities'].includes(name) && record.phase !== 'ready') throw fail('approval_required');
     if (name === 'apps_sdk_reference') return envelopes({connectionRef: record.id, phase:'succeeded', retryable:false, result:reference}, {content:textBody({reference:'My Apps SDK v1',...reference})});
     const {connectionRef, ...values} = args;
+    if(name==='apps_create'&&values.sourceAppId!==undefined&&entry.kind!=='browser')throw fail('unsupported_capability');
+    if(name==='apps_observe'&&values.target!=='device'&&!values.workspaceId)throw Object.assign(fail('missing_workspace_id'),{message:'Preview observation requires workspaceId from apps_state (previewWorkspaceId for a browser).'});
     if (name === 'terminal_events' && (typeof (values.waitSeconds ?? 20) !== 'number' || !Number.isFinite(values.waitSeconds ?? 20) || (values.waitSeconds ?? 20) < 0 || (values.waitSeconds ?? 20) > 20)) throw fail('invalid_wait');
     const isText = name === 'apps_read_text' || name === 'apps_write_text';
     if (isText) validateWorkspaceText(name, values);

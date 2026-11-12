@@ -1,5 +1,6 @@
 // Standard HTTP/OAuth boundary. Tool execution and verified device pairing stay
 // in their own adapters. No bare URL, cookie or MCP session authenticates a tool.
+import {createPrincipalRateLimit} from './remote-rate-limit.mjs';
 import {catalogEvents} from './remote-catalog-events.mjs';
 import {randomBytes} from 'node:crypto';
 import {logo, logoPath, logoIcons} from './remote-branding.mjs';
@@ -7,7 +8,7 @@ const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;',
 const cookies = header => Object.fromEntries(String(header || '').split(';').map(part => part.trim().split('=')));
 const oauthErrors = new Set(['invalid_request', 'invalid_client_metadata', 'invalid_client', 'invalid_redirect_uri', 'invalid_grant', 'invalid_target', 'unsupported_grant_type', 'invalid_token', 'pairing_unavailable', 'invalid_pairing_proof', 'pairing_conflict', 'invalid_browser_session']);
 
-export function createRemoteHTTPHandler({auth, resource, handleMCP, sdkValidation = false, onRegistrationFailure = () => {}}) {
+export function createRemoteHTTPHandler({auth, resource, handleMCP, sdkValidation = false, requestLimit = {}, onRegistrationFailure = () => {}}) {
   const target = new URL(resource), origin = target.origin, metadata = auth.metadata();
   if (typeof handleMCP !== 'function' || new URL(metadata.issuer).origin !== origin) throw Error('Invalid remote HTTP configuration.');
   const protectedPath = '/.well-known/oauth-protected-resource' + (target.pathname === '/' ? '' : target.pathname);
@@ -38,7 +39,7 @@ export function createRemoteHTTPHandler({auth, resource, handleMCP, sdkValidatio
     const legacy = values['__Host-vrch-mcp-pairing'];
     return legacy?.startsWith(id + '.') ? legacy.slice(id.length + 1) : '';
   }
-  const changes=catalogEvents(auth);
+  const changes=catalogEvents(auth), requests=createPrincipalRateLimit(requestLimit);
   const handler=async (request, response) => {
     try {
       if (request.headers.host !== target.host || request.headers.origin && request.headers.origin !== origin) {
@@ -146,6 +147,8 @@ export function createRemoteHTTPHandler({auth, resource, handleMCP, sdkValidatio
         let identity;
         try {identity = auth.authenticate(token);}
         catch {send(response, 401, {error: 'invalid_token'}, {'WWW-Authenticate': 'Bearer resource_metadata="' + origin + protectedPath + '", scope="vrch:mcp"'}); return;}
+        const retryAfter = requests.take(identity);
+        if (retryAfter) {request.resume(); send(response, 429, {error: 'rate_limited'}, {'Retry-After': String(retryAfter)}); return;}
         if (request.method === 'GET') {changes.subscribe(request,response,identity,token);return;}
         if (request.method !== 'POST') {send(response, 405, {error: 'method_not_allowed'}, {Allow: 'GET, POST'}); return;}
         if (!request.headers.accept?.includes('application/json') || !request.headers.accept?.includes('text/event-stream')) {send(response, 406, {error: 'not_acceptable'}); return;}
@@ -174,6 +177,6 @@ export function createRemoteHTTPHandler({auth, resource, handleMCP, sdkValidatio
       else response.end();
     }
   };
-  handler.close=()=>changes.close();
+  handler.close=()=>{requests.clear();changes.close();};
   return handler;
 }
