@@ -186,7 +186,9 @@ layers and App-reported logs; it is not a full page screenshot. The original
 `apps_preview_snapshot` remains a native shared web Preview capture for device
 connections. All calls still use an explicit connectionRef, exact instance and
 stable mutation operation IDs. A disconnected browser does not queue/replay writes.
-A live browser owner is never displaced by another socket. Idle unapproved targets
+A live browser owner is not displaced by another socket, except by a tab of the same browser
+(it holds the target secret) whose hello carries takeOver after the person asked for AI there: the old
+socket receives target_moved, closes with 4410, and its bound AI ends as when a tab closes. Idle unapproved targets
 expire after a day; active approvals remain until revoked, within the configured
 capacity bound. New source and this configuration require SG validation before EA.
 

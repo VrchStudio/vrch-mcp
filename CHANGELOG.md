@@ -4,6 +4,7 @@
 
 - Remix official Apps through AI and show progress before browser approval.
 - Explain missing Preview workspace ids and browser disconnect causes.
+- A Playground tab where the person asks for AI takes over its browser's connection from another tab of the same browser.
 
 - Keep each authorized user's hosted request allowance independent, with retry timing when busy.
 - Separate connector setup from daily App use and allow configurable browser onboarding capacity.
